@@ -112,8 +112,12 @@
     const sel = this.wlSelection();
     const inSel = (i) => this.inSelection(this.titleGuid(i), sel);
     // Newest first by last watched time; the app sorts itself and does not rely on the server's order.
-    const cont = this.allow(cw).filter(i => inTab(i) && inSel(i))
+    const contAll = this.allow(cw).filter(inTab)
       .sort((a, b) => (b.lastViewedAt || 0) - (a.lastViewedAt || 0)).filter(once);
+    // Titles in progress outside the selected folders are hidden, but a link can show them (until the app restarts).
+    const outside = sel.length ? contAll.filter(i => !inSel(i)).length : 0;
+    const showAll = !!this.cwShowAll && outside > 0;
+    const cont = showAll ? contAll : contAll.filter(inSel);
     const cwKeys = new Set(cont.map(i => i.ratingKey));
     const next = this.allow(deck).filter(i => inTab(i) && inSel(i) && !i.viewOffset && !cwKeys.has(i.ratingKey)).filter(once);
     const selNames = sel.map(k => (k === 'none' ? 'No folder' : this.wlFolders().find(f => f.id === k)?.name)).filter(Boolean).join(', ');
@@ -131,13 +135,18 @@
       rowsEls.push({ el, item });
       return el;
     };
-    left.replaceChildren(
+    const more = outside ? h('button.cw-more', { onclick: () => { this.cwShowAll = !showAll; this.render(this.main.scrollTop); } },
+      icon(showAll ? 'x' : 'plus', { size: 12 }),
+      showAll ? `Hide the ${outside} outside the selected folders` : `${outside} more in progress outside these folders · Show`) : null;
+    left.replaceChildren(...[
       h('div.sec-head', h('h2', 'Continue watching'), h('div.spacer'), cont.length ? h('span.muted', 'Space to play') : null),
       selNames ? h('div.sel-note', icon('folder', { size: 12 }), selNames) : null,
       ...(cont.length ? cont.map(i => row(i, false)) : [h('p.muted.small', selNames ? 'Nothing in progress in the selected folders.' : 'Nothing in progress.')]),
+      more,
       next.length ? h('div.divider') : null,
       next.length ? h('div.eyebrow', { style: { margin: '0 8px 6px' } }, 'Next up') : null,
-      ...next.slice(0, 12).map(i => row(i, true)));
+      ...next.slice(0, 12).map(i => row(i, true))
+    ].filter(Boolean));
 
     let cur = 0;
     const mark = () => rowsEls.forEach((r, i) => r.el.classList.toggle('sel', i === cur));
@@ -370,8 +379,8 @@
       const eps = leaves.filter(e => e.parentRatingKey === String(sk));
       const watchedN = eps.filter(e => e.viewCount).length;
       const seasonWatched = eps.length && watchedN === eps.length;
-      bar.replaceChildren(tabs, h('div.spacer'), h('span.muted', `${eps.length} episodes · ${watchedN} watched`),
-        s ? btn(seasonWatched ? 'Mark season unwatched' : 'Mark season watched', { kind: 'ghost', size: 'sm', onclick: () => this.toggleWatched(s, seasonWatched) }) : null);
+      bar.replaceChildren(...[tabs, h('div.spacer'), h('span.muted', `${eps.length} episodes · ${watchedN} watched`),
+        s ? btn(seasonWatched ? 'Mark season unwatched' : 'Mark season watched', { kind: 'ghost', size: 'sm', onclick: () => this.toggleWatched(s, seasonWatched) }) : null].filter(Boolean));
       list.replaceChildren(...eps.map(e => this.episodeRow(e, e.ratingKey === focus)));
       this.current.args.season = sk;
       const f = list.querySelector('.focus');

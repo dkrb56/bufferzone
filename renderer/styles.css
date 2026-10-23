@@ -195,6 +195,8 @@ body.bare #rail { display: none; }
 .cw-sub { font-size: 12px; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-left { font-size: 12px; color: var(--muted); }
 .cw-when { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cw-more { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; border-radius: 8px; padding: 10px 8px; color: var(--accent); font-size: 12px; font-weight: 600; text-align: left; }
+.cw-more:hover { background: var(--bg3); }
 .cw-play { width: 30px; height: 30px; }
 .divider { height: 1px; background: var(--line); margin: 14px 0; }
 
