@@ -26,6 +26,7 @@ const defaultSettings = {
   subtitleColor: '#ffffff',
   subtitleBackground: 'shadow', // shadow | box | none
   subtitlePosition: 8,         // % from bottom
+  audioBoost: 100,             // percent; above 100 the player amplifies through Web Audio
   autoSkipIntro: false,
   autoSkipCredits: false,
   autoPlayNext: true,

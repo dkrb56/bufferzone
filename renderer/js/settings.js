@@ -25,6 +25,8 @@
       body.append(h('h2', title), h('p.muted', 'Direct Play sends the original file. If the file cannot play, the app switches to a converted stream.'),
         card(
           row('Default quality', 'You can also change it in the player.', selectEl(QUALITY.map(q => [q.id, q.label]), s.quality, (v) => set({ quality: v }))),
+          row('Volume boost', 'Makes quiet titles louder. A limiter stops loud parts from distorting. Also in the player, under Audio.',
+            selectEl([[100, 'Off (100%)'], [150, '150%'], [200, '200%'], [300, '300%']], s.audioBoost || 100, (v) => set({ audioBoost: Number(v) }))),
           row('Play the next episode automatically', null, switchEl(s.autoPlayNext, (v) => set({ autoPlayNext: v }))),
           row('Countdown before next episode', null, selectEl([[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds']], s.nextCountdown, (v) => set({ nextCountdown: Number(v) })))),
         card(

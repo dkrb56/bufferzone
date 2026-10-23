@@ -45,7 +45,8 @@
     // ---------- DOM ----------
     build() {
       const pbtn = (name, title, onclick) => h('button.p-btn', { title, onclick }, icon(name, { size: 20 }));
-      this.video = h('video', { preload: 'auto' });
+      // crossOrigin keeps direct-play media readable for Web Audio (volume boost); the main process adds the CORS header.
+      this.video = h('video', { preload: 'auto', crossOrigin: 'anonymous' });
       this.subEl = h('div.subs');
       this.spinner = h('div.spinner');
       this.errorBox = h('div.player-error');
@@ -75,6 +76,7 @@
         oninput: () => { this.video.volume = +this.volume.value; this.video.muted = false; }
       });
       this.muteBtn = pbtn('volume-2', 'Mute (M)', () => { this.video.muted = !this.video.muted; });
+      this.boostEl = h('button.p-boost', { title: 'Volume boost', onclick: (e) => this.togglePop('tracks', e) });
       this.nextBtn = pbtn('skip-forward', 'Next episode (N)', () => this.playNext());
       this.qualBtn = h('button.p-chip', { title: 'Quality', onclick: (e) => this.togglePop('quality', e) });
       this.ccBtn = pbtn('captions', 'Audio and subtitles', (e) => this.togglePop('tracks', e));
@@ -97,6 +99,7 @@
             this.nextBtn,
             this.muteBtn,
             this.volume,
+            this.boostEl,
             this.timeEl,
             h('div.spacer'),
             this.qualBtn, this.ccBtn, this.epsBtn,
@@ -274,6 +277,7 @@
       // Multi-view tiles stay unmuted at volume 0: Chromium pauses muted media in a hidden window.
       this.video.volume = this.tile ? (this.tileVolume ?? 0) : (this.settings.volume ?? 1);
       this.volume.value = this.video.volume;
+      this.applyBoost();
       this.video.play().catch(() => {});
       this.startTimers();
       this.updateUi();
@@ -315,6 +319,14 @@
         this.decisionSub = s.find(x => x.streamType === 3) || null;
       } catch (e) {
         sofa.log('decision failed', String(e));
+      }
+      // Embedded text subtitles come as a separate file only when Plex chooses "sidecar".
+      // With any other delivery that request never answers, so burn them into the video at once instead of waiting.
+      if (subMode === 'auto' && this.decisionSub && this.decisionSub.location !== 'sidecar') {
+        sofa.log('subtitles not available as a file, burning them in', { location: this.decisionSub.location });
+        this.burnSubs = true;
+        this.subMode = 'burn';
+        return this.startHls(offset, 'burn');
       }
 
       const url = this.plex.url('/video/:/transcode/universal/start.m3u8', params);
@@ -386,6 +398,17 @@
         this.hls.recoverMediaError();
         return;
       }
+      // A 404 means the server ended the session (e.g. a long pause or a network break).
+      // Start a new session at the same position; at most twice per minute, so a real error still shows.
+      if (data.response?.code === 404 && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        const now = Date.now();
+        this.restarts = (this.restarts || []).filter(t => now - t < 60000);
+        if (this.restarts.length < 2) {
+          this.restarts.push(now);
+          sofa.log('hls session gone, restarting at', Math.round(this.time()));
+          return this.seekTo(this.time() + 0.01, { restart: true });
+        }
+      }
       if (data.response?.code === 400 || data.response?.code === 403) {
         this.fail(new Error('The server refused the stream. Your friend may not allow conversion (transcoding) for shared users. Try "Direct Play" in Quality.'));
       } else {
@@ -440,6 +463,8 @@
       if (this.meta) this.report('stopped');
       clearInterval(this.timer);
       this.destroyStream();
+      // Pending async work (e.g. loadSidecarSub) compares session ids; clearing it makes that work stop.
+      this.transcodeSession = null;
       this.overlay?.stop();
       this.forceHls = false;
       this.burnSubs = false;
@@ -469,11 +494,12 @@
 
     seekBy(sec) { this.seekTo(this.time() + sec); }
 
-    seekTo(t) {
+    // `restart` starts a new transcode session even when `t` is already buffered.
+    seekTo(t, { restart = false } = {}) {
       t = Math.max(0, Math.min(this.duration - 1, t));
       if (this.mode === 'direct') { this.video.currentTime = t; return; }
       const b = this.video.buffered;
-      for (let i = 0; i < b.length; i++) {
+      for (let i = 0; !restart && i < b.length; i++) {
         if (t >= b.start(i) && t <= b.end(i)) { this.video.currentTime = t; return; }
       }
       // Outside the buffer: restart the transcode at the new position.
@@ -487,10 +513,16 @@
     }
 
     // ---------- watch tracking ----------
+    // Plex ends a converted (HLS) session after a few idle minutes; the next segment then gives 404.
+    // So the timeline also goes out while paused, and HLS sessions get a ping every 30 s.
     startTimers() {
       clearInterval(this.timer);
+      let tick = 0;
       this.timer = setInterval(() => {
-        if (!this.video.paused) this.report('playing');
+        this.report(this.video.paused ? 'paused' : 'playing');
+        if (this.mode === 'hls' && this.transcodeSession && ++tick % 3 === 0) {
+          this.plex.get('/video/:/transcode/universal/ping', { session: this.transcodeSession }).catch(() => {});
+        }
       }, 10000);
     }
 
@@ -646,9 +678,14 @@
           x.language || x.displayTitle || `Track ${x.index}`,
           [x.forced ? 'forced' : '', x.title, String(x.codec || '').toUpperCase(), Subtitles.isTextSub(x) ? '' : 'converted'].filter(Boolean).join(' · '),
           () => this.changeSub(x))));
+        const boost = this.settings.audioBoost || 100;
+        const boostRow = h('div.boost-row', h('div.eyebrow', 'Volume boost'),
+          h('div.tabs.sm', [100, 150, 200, 300].map(v => h('button.tab' + (v === boost ? '.active' : ''), {
+            onclick: (ev) => { ev.stopPropagation(); this.setBoost(v); this.pop.dataset.kind = ''; this.togglePop('tracks', ev); }
+          }, `${v}%`))));
         body = h('div.tracks',
           h('div.tracks-cols',
-            h('div.tracks-col', h('div.eyebrow', 'Audio'), audio),
+            h('div.tracks-col', h('div.eyebrow', 'Audio'), audio, boostRow),
             h('div.tracks-col', h('div.eyebrow', 'Subtitles'), subs)),
           h('div.tracks-foot',
             h('span', this.isEpisode ? `Remembered for ${this.meta.grandparentTitle}` : 'Applies to this movie'),
@@ -674,6 +711,35 @@
     closePop() {
       this.pop.classList.remove('on');
       this.root.classList.remove('tracks-open');
+    }
+
+    // Volume boost (settings.audioBoost, 100–300 %): video -> gain -> limiter -> speakers.
+    // The Web Audio graph is built on first use; a media element cannot leave it again, so 100 % sets gain 1 and turns the limiter off.
+    applyBoost() {
+      if (this.tile) return;
+      const boost = (this.settings.audioBoost || 100) / 100;
+      if (boost <= 1 && !this.gain) return;
+      if (!this.gain) {
+        const ctx = this.audioCtx = new AudioContext();
+        this.gain = ctx.createGain();
+        this.limiter = ctx.createDynamicsCompressor();
+        ctx.createMediaElementSource(this.video).connect(this.gain).connect(this.limiter).connect(ctx.destination);
+      }
+      const l = this.limiter;
+      l.threshold.value = boost > 1 ? -3 : 0;
+      l.ratio.value = boost > 1 ? 20 : 1;
+      l.knee.value = 0;
+      l.attack.value = 0.003;
+      l.release.value = 0.25;
+      this.gain.gain.value = boost;
+      if (this.audioCtx.state === 'suspended') this.audioCtx.resume().catch(() => {});
+      this.uiState = null;
+    }
+
+    setBoost(pct) {
+      this.app.saveSettings({ audioBoost: pct });
+      this.applyBoost();
+      this.updateUi();
     }
 
     togglePip() {
@@ -727,9 +793,12 @@
       const t = this.time();
       const d = this.duration || 1;
       // Icons are rebuilt only when their state changes.
-      const state = `${this.video.paused}|${this.video.muted || this.video.volume === 0}|${this.mode}|${this.quality}`;
+      const state = `${this.video.paused}|${this.video.muted || this.video.volume === 0}|${this.mode}|${this.quality}|${this.settings.audioBoost}`;
       if (state !== this.uiState) {
         this.uiState = state;
+        const boost = this.settings.audioBoost || 100;
+        this.boostEl.textContent = boost > 100 ? `${boost}%` : '';
+        this.boostEl.style.display = boost > 100 ? '' : 'none';
         this.playBtn.replaceChildren(icon(this.video.paused ? 'play' : 'pause', { size: 20 }));
         this.muteBtn.replaceChildren(icon(this.video.muted || this.video.volume === 0 ? 'volume-x' : 'volume-2', { size: 20 }));
         // A Direct Play preference that fell back to a converted stream plays at original quality.
