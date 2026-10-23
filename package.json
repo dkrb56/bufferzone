@@ -1,0 +1,17 @@
+{
+  "name": "buffer-zone",
+  "productName": "Buffer Zone",
+  "version": "0.1.0",
+  "description": "Clean desktop player for a friend's Plex server",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.3"
+  }
+}
