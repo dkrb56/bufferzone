@@ -12,7 +12,7 @@ First start: click **Sign in with Plex**. Your browser opens plex.tv. Sign in th
 
 - Icon rail navigation: Home, Search, Movies, Series, Kids, Watchlist, Multi-view, pinned items and Settings.
 - Home shows only the server you choose: Continue Watching and Next Up on the left, your watchlist on the right. Tabs filter by library, folder chips filter the watchlist. ↑/↓ and Space play from the list.
-- Watchlist folders: make your own folders and put titles in them. Drag a title onto a folder, or use the folder button on a title. A title can be in more than one folder. Folders are saved on this computer, because Plex has no watchlist folders.
+- Watchlist folders: make your own folders and put titles in them. Drag a title onto a folder, or use the folder button on a title. A title can be in more than one folder. Select one or more folder chips to filter: the selection applies to the watchlist page and to both columns of home (an episode counts for its series), and the app keeps it after a restart. Folders are saved on this computer, because Plex has no watchlist folders.
 - Library pages: sort, genre filter, "unwatched only", grid or list view, collections and an A–Z letter rail. The app remembers the filter per library.
 - Search palette (Ctrl+F or /) for movies, series and episodes. Enter opens, Ctrl+Enter plays.
 - Watchlist from your Plex account, matched to titles on the server. Add or remove titles from detail pages.

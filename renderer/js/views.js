@@ -62,6 +62,19 @@
     return `${Math.max(1, Math.round((item.duration - item.viewOffset) / 60000))} min left`;
   }
 
+  // "Watched today 21:26", "Watched yesterday 17:49", else "Watched 2026-10-21" (local time).
+  function watchedText(ts) {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((day(new Date()) - day(d)) / 86400000);
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (diff === 0) return `Watched today ${time}`;
+    if (diff === 1) return `Watched yesterday ${time}`;
+    return `Watched ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
   // ---------- home ----------
   S.views.home = async function (view, _args, alive) {
     const g = this.groups();
@@ -95,9 +108,15 @@
     // Left: continue watching + next up. The same title can be in two libraries (e.g. Movies and Movies - 4K).
     const seenGuid = new Set();
     const once = (i) => { const k = i.guid || i.ratingKey; return seenGuid.has(k) ? false : seenGuid.add(k); };
-    const cont = this.allow(cw).filter(inTab).filter(once);
+    // The selected watchlist folders filter the left column too.
+    const sel = this.wlSelection();
+    const inSel = (i) => this.inSelection(this.titleGuid(i), sel);
+    // Newest first by last watched time; the app sorts itself and does not rely on the server's order.
+    const cont = this.allow(cw).filter(i => inTab(i) && inSel(i))
+      .sort((a, b) => (b.lastViewedAt || 0) - (a.lastViewedAt || 0)).filter(once);
     const cwKeys = new Set(cont.map(i => i.ratingKey));
-    const next = this.allow(deck).filter(i => inTab(i) && !i.viewOffset && !cwKeys.has(i.ratingKey)).filter(once);
+    const next = this.allow(deck).filter(i => inTab(i) && inSel(i) && !i.viewOffset && !cwKeys.has(i.ratingKey)).filter(once);
+    const selNames = sel.map(k => (k === 'none' ? 'No folder' : this.wlFolders().find(f => f.id === k)?.name)).filter(Boolean).join(', ');
     const rowsEls = [];
     const row = (item, isNext) => {
       const img = item.type === 'episode' ? item.thumb || item.grandparentArt : item.art || item.thumb;
@@ -106,26 +125,28 @@
       const sub = item.type === 'episode' ? `${epCode(item)} · ${item.title}${isNext ? ' · new' : ''}` : [item.year, 'Movie'].filter(Boolean).join(' · ');
       const el = h('div.cw-row', { onclick: () => this.play(item) },
         this.art(img, 256, 144, title, [prog ? h('div.prog', h('div', { style: { width: `${prog * 100}%` } })) : null]),
-        h('div.cw-text', h('div.cw-title', title), h('div.cw-sub', sub), h('div.cw-left', isNext ? (item.duration ? fmtDuration(item.duration) : '') : leftText(item))),
+        h('div.cw-text', h('div.cw-title', title), h('div.cw-sub', sub), h('div.cw-left', isNext ? (item.duration ? fmtDuration(item.duration) : '') : leftText(item)),
+          item.lastViewedAt ? h('div.cw-when', watchedText(item.lastViewedAt)) : null),
         iconBtn('play', { cls: 'cw-play', title: 'Play', size: 16 }));
       rowsEls.push({ el, item });
       return el;
     };
     left.replaceChildren(
       h('div.sec-head', h('h2', 'Continue watching'), h('div.spacer'), cont.length ? h('span.muted', 'Space to play') : null),
-      ...(cont.length ? cont.map(i => row(i, false)) : [h('p.muted.small', 'Nothing in progress.')]),
+      selNames ? h('div.sel-note', icon('folder', { size: 12 }), selNames) : null,
+      ...(cont.length ? cont.map(i => row(i, false)) : [h('p.muted.small', selNames ? 'Nothing in progress in the selected folders.' : 'Nothing in progress.')]),
       next.length ? h('div.divider') : null,
       next.length ? h('div.eyebrow', { style: { margin: '0 8px 6px' } }, 'Next up') : null,
       ...next.slice(0, 12).map(i => row(i, true)));
 
-    let sel = 0;
-    const mark = () => rowsEls.forEach((r, i) => r.el.classList.toggle('sel', i === sel));
+    let cur = 0;
+    const mark = () => rowsEls.forEach((r, i) => r.el.classList.toggle('sel', i === cur));
     if (rowsEls.length) mark();
     this.homeKeys = (e) => {
       if (!rowsEls.length) return;
-      if (e.key === 'ArrowDown') { sel = Math.min(rowsEls.length - 1, sel + 1); mark(); rowsEls[sel].el.scrollIntoView({ block: 'nearest' }); e.preventDefault(); }
-      else if (e.key === 'ArrowUp') { sel = Math.max(0, sel - 1); mark(); rowsEls[sel].el.scrollIntoView({ block: 'nearest' }); e.preventDefault(); }
-      else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); this.play(rowsEls[sel].item); }
+      if (e.key === 'ArrowDown') { cur = Math.min(rowsEls.length - 1, cur + 1); mark(); rowsEls[cur].el.scrollIntoView({ block: 'nearest' }); e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { cur = Math.max(0, cur - 1); mark(); rowsEls[cur].el.scrollIntoView({ block: 'nearest' }); e.preventDefault(); }
+      else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); this.play(rowsEls[cur].item); }
     };
 
     // Right: watchlist, newest first. Folder chips filter it; the library tabs filter it too.
@@ -133,13 +154,12 @@
     if (!alive()) return;
     const inScope = wl.filter(r => this.watchGuids.has(r.w.guid) && (r.s ? inTab(r.s) : tab.id === 'all'));
     const drawWl = () => {
-      let folder = this.settings.homeWlFolder || 'all';
-      if (folder !== 'all' && folder !== 'none' && !this.wlFolders().some(x => x.id === folder)) folder = 'all';
-      const list = inScope.filter(r => this.inFolder(folder, r.w.guid));
+      const list = inScope.filter(r => this.inSelection(r.w.guid, sel));
       right.replaceChildren(...[
         h('div.sec-head', h('h2', 'Watchlist'), h('span.muted', `${list.length} titles`), h('div.spacer'),
           btn('Open watchlist', { kind: 'ghost', size: 'sm', onclick: () => this.go('watchlist', {}, { root: true }) })),
-        this.wlFolders().length ? h('div.folder-bar', this.folderChips(folder, inScope, (k) => { this.saveSettings({ homeWlFolder: k }); drawWl(); }, { drop: false, small: true })) : null,
+        // A new selection changes both columns, so the whole home view redraws.
+        this.wlFolders().length ? h('div.folder-bar', this.folderChips(inScope, () => this.render(this.main.scrollTop), { drop: false, small: true })) : null,
         list.length ? h('div.grid', list.map(r => this.wlCard(r)))
           : h('p.muted', wl.length ? 'Nothing in this view.' : 'Your watchlist is empty. Add titles with the bookmark button on a movie or series.')
       ].filter(Boolean));
@@ -449,11 +469,40 @@
       .sort((a, b) => (b.w.watchlistedAt || 0) - (a.w.watchlistedAt || 0));
   };
 
-  // Folder chips. Titles can be dragged onto a folder chip.
-  P.folderChips = function (current, rows, onSelect, { drop = true, small = false } = {}) {
+  // One folder selection, shared by home and the watchlist page and kept across restarts.
+  // [] means all titles; otherwise folder ids and/or 'none' ("No folder"). A title matches when it is in any selected folder.
+  P.wlSelection = function () {
+    let sel = this.settings.wlSelected;
+    if (!Array.isArray(sel)) {
+      const old = this.settings.homeWlFolder; // selection of the first folder version
+      sel = old && old !== 'all' ? [old] : [];
+    }
+    const ids = new Set(this.wlFolders().map(f => f.id));
+    return sel.filter(k => k === 'none' || ids.has(k));
+  };
+  P.setWlSelection = function (sel) { this.saveSettings({ wlSelected: sel }); };
+  P.inSelection = function (guid, sel = this.wlSelection()) {
+    return !sel.length || sel.some(k => this.inFolder(k, guid));
+  };
+  // Folders hold series and movies; an episode or season belongs to its series.
+  P.titleGuid = function (i) {
+    return i.type === 'episode' ? i.grandparentGuid : i.type === 'season' ? i.parentGuid : i.guid;
+  };
+
+  // Folder chips. "All" clears the selection; a folder chip adds or removes that folder.
+  // Titles can be dragged onto a folder chip.
+  P.folderChips = function (rows, onChange, { drop = true, small = false } = {}) {
+    const sel = this.wlSelection();
     const count = (key) => rows.filter(r => this.inFolder(key, r.w.guid)).length;
+    const toggle = (key) => {
+      if (key === 'all') this.setWlSelection([]);
+      else this.setWlSelection(sel.includes(key) ? sel.filter(k => k !== key) : [...sel, key]);
+      onChange();
+    };
     const chip = (key, label) => {
-      const el = h('button.tab' + (key === current ? '.active' : ''), { onclick: () => onSelect(key) }, label, h('span.n', String(count(key))));
+      const active = key === 'all' ? !sel.length : sel.includes(key);
+      const el = h('button.tab' + (active ? '.active' : ''), { onclick: () => toggle(key), title: key === 'all' ? 'Show all titles' : 'Click to add or remove this folder' },
+        active && key !== 'all' ? icon('check', { size: 12, stroke: 3 }) : null, label, h('span.n', String(count(key))));
       if (drop && key !== 'all' && key !== 'none') {
         el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drop'); });
         el.addEventListener('dragleave', () => el.classList.remove('drop'));
@@ -464,7 +513,7 @@
           if (!guid) return;
           this.setInFolder(key, guid, true);
           toast(`Added to ${label}`);
-          onSelect(current);
+          onChange();
         });
       }
       return el;
@@ -511,25 +560,27 @@
   };
 
   S.views.watchlist = async function (view, _args, alive) {
-    const f = { type: 'all', sort: 'added', folder: 'all', ...(this.settings.watchlistView || {}) };
+    const f = { type: 'all', sort: 'added', ...(this.settings.watchlistView || {}) };
+    delete f.folder; // the folder selection is shared with home now, see wlSelection()
     const save = () => this.saveSettings({ watchlistView: f });
     const count = h('span.muted');
     const body = h('div', h('div.loading', `Matching titles on ${this.plex.server.name}…`));
     view.append(h('div.page-head', h('h1', 'Watchlist'), count, h('div.spacer'), this.searchField()), h('div.pad', body));
     const all = await this.watchlistRows();
     if (!alive()) return;
-    if (f.folder !== 'all' && f.folder !== 'none' && !this.wlFolders().some(x => x.id === f.folder)) f.folder = 'all';
 
     const draw = () => {
+      const sel = this.wlSelection();
       const items = all.filter(r => this.watchGuids.has(r.w.guid));
-      let rows = items.filter(r => this.inFolder(f.folder, r.w.guid));
+      let rows = items.filter(r => this.inSelection(r.w.guid, sel));
       if (f.type !== 'all') rows = rows.filter(r => r.w.type === f.type);
       if (f.sort === 'added') rows.sort((a, b) => (b.w.watchlistedAt || 0) - (a.w.watchlistedAt || 0));
       if (f.sort === 'title') rows.sort((a, b) => a.w.title.localeCompare(b.w.title));
       if (f.sort === 'length') rows.sort((a, b) => ((b.s?.duration || b.w.duration || 0) - (a.s?.duration || a.w.duration || 0)));
       count.textContent = `${items.length} titles`;
       const added = (w) => w.watchlistedAt ? new Date(w.watchlistedAt * 1000).toISOString().slice(0, 10) : '';
-      const folder = this.wlFolders().find(x => x.id === f.folder);
+      // Rename and delete act on one folder, so they show when exactly one folder is selected.
+      const folder = sel.length === 1 ? this.wlFolders().find(x => x.id === sel[0]) : null;
       const folderNames = (guid) => this.wlFolders().filter(x => x.guids.includes(guid)).map(x => x.name).join(', ');
       const row = ({ w, s }) => {
         const el = h('div.t-row', { draggable: true, title: 'Drag onto a folder to add it' },
@@ -561,8 +612,8 @@
       };
       body.replaceChildren(
         h('div.folder-bar',
-          this.folderChips(f.folder, items, (k) => { f.folder = k; save(); draw(); }),
-          btn('New folder', { kind: 'ghost', size: 'sm', icon: 'plus', onclick: async () => { const nf = await this.newFolder(); if (nf) { f.folder = nf.id; save(); draw(); } } }),
+          this.folderChips(items, draw),
+          btn('New folder', { kind: 'ghost', size: 'sm', icon: 'plus', onclick: async () => { const nf = await this.newFolder(); if (nf) { this.setWlSelection([nf.id]); draw(); } } }),
           h('div.spacer'),
           folder ? btn('Rename', { kind: 'ghost', size: 'sm', onclick: async () => {
             const name = await S.askText('Rename folder', null, folder.name);
@@ -571,14 +622,15 @@
           folder ? btn('Delete folder', { kind: 'ghost', size: 'sm', onclick: async () => {
             if (!await S.askConfirm(`Delete "${folder.name}"?`, 'The titles stay on your watchlist. Only the folder goes away.')) return;
             this.saveFolders(this.wlFolders().filter(x => x.id !== folder.id));
-            f.folder = 'all'; save(); draw();
+            this.setWlSelection(sel.filter(k => k !== folder.id));
+            draw();
           } }) : null),
         h('div.wl-tools',
           h('div.tabs', [['all', 'All'], ['movie', 'Movies'], ['show', 'Series']].map(([k, l]) => h('button.tab' + (f.type === k ? '.active' : ''), { onclick: () => { f.type = k; save(); draw(); } }, l))),
           h('div', { style: { width: '170px' } }, selectEl([['added', 'Date added'], ['title', 'Title A–Z'], ['length', 'Length']], f.sort, (v) => { f.sort = v; save(); draw(); }))),
         h('div.table',
           h('div.t-row.head', h('div', 'Title'), h('div', 'Library'), h('div', 'Added'), h('div', 'Status'), h('div', 'Length'), h('div')),
-          rows.length ? rows.map(row) : h('div.empty', folder ? 'This folder is empty. Drag titles onto its name, or use the folder button on a title.' : 'Nothing here.')));
+          rows.length ? rows.map(row) : h('div.empty', sel.length ? 'No titles in the selected folders. Drag titles onto a folder name, or use the folder button on a title.' : 'Nothing here.')));
     };
     draw();
   };

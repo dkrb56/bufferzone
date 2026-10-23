@@ -185,6 +185,7 @@ body.bare #rail { display: none; }
 .sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
 .sec-head h2 { font-size: 16px; font-weight: 700; margin: 0; }
 .sec-head .muted { font-size: 12px; }
+.sel-note { display: flex; align-items: center; gap: 6px; margin: -6px 8px 8px; font-size: 12px; color: var(--accent); }
 .cw-row { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; cursor: pointer; }
 .cw-row:hover, .cw-row.sel { background: var(--bg3); }
 .cw-row .art { width: 128px; aspect-ratio: 16 / 9; border-radius: 6px; flex: none; }
@@ -193,6 +194,7 @@ body.bare #rail { display: none; }
 .cw-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-sub { font-size: 12px; color: var(--text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cw-left { font-size: 12px; color: var(--muted); }
+.cw-when { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cw-play { width: 30px; height: 30px; }
 .divider { height: 1px; background: var(--line); margin: 14px 0; }
 
@@ -276,6 +278,8 @@ body.bare #rail { display: none; }
 .t-actions { display: flex; justify-content: flex-end; gap: 2px; }
 .t-actions .icon-btn { width: 38px; height: 38px; }
 .folder-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+/* On the watchlist page the folder chips stay under the page header, so titles can be dragged onto them from anywhere in the list. */
+.pad > div > .folder-bar { position: sticky; top: 56px; z-index: 4; background: var(--bg); margin: -10px 0 4px; padding: 10px 0 12px; border-bottom: 1px solid var(--line); }
 .tab .n { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tab.active .n { color: var(--bg); opacity: .6; }
 .tab.drop { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
