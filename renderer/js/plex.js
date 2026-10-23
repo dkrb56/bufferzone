@@ -73,21 +73,23 @@
     }
 
     // Try all connections in parallel; prefer a direct connection over the Plex relay.
-    async connect(resource) {
+    // Returns the working connection, or null when the server cannot be reached.
+    async probe(resource) {
       const token = resource.accessToken || this.token;
       const conns = resource.connections || [];
-      const probe = async (c) => {
+      const test = async (c) => {
         const res = await sofa.http({ url: `${c.uri}/identity`, headers: { ...this.clientHeaders(), 'X-Plex-Token': token }, timeout: 6000 });
         if (!res.ok) throw new Error(`${c.uri} -> ${res.status}`);
         return c;
       };
-      const direct = conns.filter(c => !c.relay);
-      const relay = conns.filter(c => c.relay);
-      let chosen = null;
-      try { chosen = await Promise.any(direct.map(probe)); } catch {}
-      if (!chosen) {
-        try { chosen = await Promise.any(relay.map(probe)); } catch {}
-      }
+      try { return await Promise.any(conns.filter(c => !c.relay).map(test)); } catch {}
+      try { return await Promise.any(conns.filter(c => c.relay).map(test)); } catch {}
+      return null;
+    }
+
+    async connect(resource) {
+      const token = resource.accessToken || this.token;
+      const chosen = await this.probe(resource);
       if (!chosen) throw new PlexError(`Cannot reach server "${resource.name}". It may be offline.`);
       this.server = {
         id: resource.clientIdentifier,
@@ -206,6 +208,69 @@
     // Stream selection on the server (affects transcode output)
     selectStreams(partId, { audioStreamID, subtitleStreamID }) {
       return this.put(`/library/parts/${partId}`, { audioStreamID, subtitleStreamID, allParts: 1 });
+    }
+
+    async onDeck() {
+      const mc = await this.get('/library/onDeck', { 'X-Plex-Container-Size': 30 });
+      return mc.Metadata || [];
+    }
+    async firstCharacter(sectionId, type) {
+      const mc = await this.get(`/library/sections/${sectionId}/firstCharacter`, { type });
+      return mc.Directory || [];
+    }
+    async collections(sectionId) {
+      const mc = await this.get(`/library/sections/${sectionId}/collections`);
+      return mc.Metadata || [];
+    }
+    async collectionItems(ratingKey) {
+      const mc = await this.get(`/library/collections/${ratingKey}/children`);
+      return mc.Metadata || [];
+    }
+    async findByGuid(guid) {
+      const mc = await this.get('/library/all', { guid });
+      return mc.Metadata || [];
+    }
+
+    // ---- other plex.tv services ----
+    async service(base, path, { method = 'GET', params, token = this.token } = {}) {
+      const url = `${base}${path}${params ? '?' + qs(params) : ''}`;
+      const res = await sofa.http({ url, method, headers: { ...this.clientHeaders(), 'X-Plex-Token': token } });
+      if (!res.ok) throw new PlexError(`${path} failed (${res.status})`, res.status);
+      return res.body;
+    }
+
+    // Plex Home
+    async homeUsers() {
+      const body = await this.service('https://clients.plex.tv', '/api/v2/home/users', { token: this.accountToken || this.token });
+      return body.users || [];
+    }
+    // Returns the user with its own authToken. A wrong PIN gives status 401 or 403.
+    async switchUser(uuid, pin) {
+      return this.service('https://clients.plex.tv', `/api/v2/home/users/${uuid}/switch`, { method: 'POST', params: { pin }, token: this.accountToken || this.token });
+    }
+
+    // Watchlist (Plex Discover). The discover ratingKey is the last part of the plex:// guid.
+    // Discover returns at most 100 items per request.
+    async watchlist() {
+      const all = [];
+      for (let start = 0; start < 1000; start += 100) {
+        const body = await this.service('https://discover.provider.plex.tv', '/library/sections/watchlist/all', { params: { 'X-Plex-Container-Start': start, 'X-Plex-Container-Size': 100 } });
+        const mc = body.MediaContainer || {};
+        all.push(...(mc.Metadata || []));
+        if (all.length >= (mc.totalSize || 0) || !(mc.Metadata || []).length) break;
+      }
+      return all;
+    }
+    // Holds watchlistedAt, which the list itself does not include.
+    async watchlistState(ratingKey) {
+      const body = await this.service('https://discover.provider.plex.tv', `/library/metadata/${ratingKey}/userState`);
+      return (body.MediaContainer?.UserState || [])[0] || {};
+    }
+    addToWatchlist(guid) {
+      return this.service('https://discover.provider.plex.tv', '/actions/addToWatchlist', { method: 'PUT', params: { ratingKey: guid.split('/').pop() } });
+    }
+    removeFromWatchlist(guid) {
+      return this.service('https://discover.provider.plex.tv', '/actions/removeFromWatchlist', { method: 'PUT', params: { ratingKey: guid.split('/').pop() } });
     }
   }
 

@@ -1,7 +1,7 @@
 // Video player: direct play or HLS from the Plex transcoder, track selection,
 // styled subtitles, skip intro/credits, auto-play next episode, watch tracking.
 (function () {
-  const { h, fmtTime, epCode, toast, Subtitles } = window.Sofa;
+  const { h, fmtTime, fmtDuration, epCode, toast, pill, Subtitles, icon } = window.Sofa;
 
   const QUALITY = [
     { id: 'direct', label: 'Direct Play (original file)', short: 'Direct' },
@@ -28,18 +28,23 @@
   const uuid = () => crypto.randomUUID();
   const langOf = (s) => String(s?.languageCode || '').toLowerCase();
 
+  // `tile` players (Multi-view) have no controls, keys or next-episode logic.
   class Player {
-    constructor(app) {
+    constructor(app, root = document.getElementById('player'), { tile = false } = {}) {
       this.app = app;
-      this.root = document.getElementById('player');
+      this.root = root;
+      this.tile = tile;
+      this.root.classList.add('vp');
       this.build();
     }
 
     get plex() { return this.app.plex; }
     get settings() { return this.app.settings; }
+    get quality() { return this.qualityOverride || this.settings.quality; }
 
     // ---------- DOM ----------
     build() {
+      const pbtn = (name, title, onclick) => h('button.p-btn', { title, onclick }, icon(name, { size: 20 }));
       this.video = h('video', { preload: 'auto' });
       this.subEl = h('div.subs');
       this.spinner = h('div.spinner');
@@ -47,9 +52,13 @@
       this.skipBtn = h('button.skip-btn', { onclick: () => this.doSkip() });
       this.nextCard = h('div.next-card');
       this.titleEl = h('div.p-title');
+      this.subTitleEl = h('div.p-sub');
+      this.statusEl = h('span');
+      this.techEl = h('span.p-tech');
       this.timeEl = h('span.p-time');
       this.seekFill = h('div.seek-fill');
       this.seekBuf = h('div.seek-buf');
+      this.seekThumb = h('div.seek-thumb');
       this.seekHover = h('div.seek-hover');
       this.markersEl = h('div.seek-markers');
       this.seek = h('div.seek', {
@@ -59,43 +68,45 @@
           this.seekHover.textContent = fmtTime(t);
           this.seekHover.style.left = `${(t / this.duration) * 100}%`;
         }
-      }, this.seekBuf, this.markersEl, this.seekFill, this.seekHover);
-      this.playBtn = h('button.p-btn.big', { title: 'Play / Pause (Space)', onclick: () => this.togglePlay() });
+      }, this.seekBuf, this.markersEl, this.seekFill, this.seekThumb, this.seekHover);
+      this.playBtn = pbtn('pause', 'Play / Pause (Space)', () => this.togglePlay());
       this.volume = h('input.vol', {
         type: 'range', min: 0, max: 1, step: 0.05, value: 1,
         oninput: () => { this.video.volume = +this.volume.value; this.video.muted = false; }
       });
-      this.nextBtn = h('button.p-btn', { title: 'Next episode (N)', onclick: () => this.playNext() }, '⏭');
-      this.audioBtn = h('button.p-btn.txt', { onclick: (e) => this.openMenu('audio', e) }, 'Audio');
-      this.subBtn = h('button.p-btn.txt', { onclick: (e) => this.openMenu('subs', e) }, 'Subtitles');
-      this.qualBtn = h('button.p-btn.txt', { onclick: (e) => this.openMenu('quality', e) }, 'Quality');
-      this.menu = h('div.p-menu');
-      this.modeEl = h('span.p-mode');
+      this.muteBtn = pbtn('volume-2', 'Mute (M)', () => { this.video.muted = !this.video.muted; });
+      this.nextBtn = pbtn('skip-forward', 'Next episode (N)', () => this.playNext());
+      this.qualBtn = h('button.p-chip', { title: 'Quality', onclick: (e) => this.togglePop('quality', e) });
+      this.ccBtn = pbtn('captions', 'Audio and subtitles', (e) => this.togglePop('tracks', e));
+      this.epsBtn = pbtn('list-video', 'Episodes', (e) => this.togglePop('episodes', e));
+      this.fsBtn = pbtn('maximize', 'Fullscreen (F)', () => sofa.fullscreen());
+      this.pop = h('div.p-pop');
 
       this.controls = h('div.p-controls',
         h('div.p-top',
-          h('button.p-btn', { title: 'Back (Esc)', onclick: () => this.exit() }, '←'),
-          this.titleEl,
-          this.modeEl
+          pbtn('arrow-left', 'Back (Esc)', () => this.exit()),
+          h('div.p-titles', this.titleEl, this.subTitleEl),
+          h('div.p-status', this.statusEl, this.techEl)
         ),
         h('div.p-bottom',
           this.seek,
           h('div.p-row',
             this.playBtn,
-            h('button.p-btn', { title: 'Back 10 s (←)', onclick: () => this.seekBy(-10) }, '↺10'),
-            h('button.p-btn', { title: 'Forward 30 s (→)', onclick: () => this.seekBy(30) }, '30↻'),
+            pbtn('rotate-ccw', 'Back 10 s (←)', () => this.seekBy(-10)),
+            pbtn('rotate-cw', 'Forward 30 s (→)', () => this.seekBy(30)),
             this.nextBtn,
+            this.muteBtn,
+            this.volume,
             this.timeEl,
             h('div.spacer'),
-            this.audioBtn, this.subBtn, this.qualBtn,
-            h('span.vol-icon', { onclick: () => { this.video.muted = !this.video.muted; this.updateUi(); } }, '🔊'),
-            this.volume,
-            h('button.p-btn', { title: 'Fullscreen (F)', onclick: () => sofa.fullscreen() }, '⛶')
+            this.qualBtn, this.ccBtn, this.epsBtn,
+            pbtn('picture-in-picture-2', 'Picture in picture', () => this.togglePip()),
+            this.fsBtn
           )
         )
       );
 
-      this.root.append(this.video, this.subEl, this.spinner, this.errorBox, this.skipBtn, this.nextCard, this.controls, this.menu);
+      this.root.append(this.video, this.subEl, this.spinner, this.errorBox, this.skipBtn, this.nextCard, this.controls, this.pop);
       this.overlay = new Subtitles.SubtitleOverlay(this.subEl, () => this.time());
 
       const v = this.video;
@@ -108,21 +119,31 @@
       v.addEventListener('ended', () => this.onEnded());
       v.addEventListener('error', () => this.onVideoError());
       v.addEventListener('volumechange', () => this.updateUi());
-      v.addEventListener('click', () => this.togglePlay());
+      if (this.tile) return;
+      v.addEventListener('click', () => (this.pop.classList.contains('on') ? this.closePop() : this.togglePlay()));
       v.addEventListener('dblclick', () => sofa.fullscreen());
 
       this.root.addEventListener('mousemove', () => this.poke());
       document.addEventListener('keydown', (e) => this.onKey(e));
       document.addEventListener('click', (e) => {
-        if (!this.menu.contains(e.target) && !e.target.closest('.p-btn.txt')) this.closeMenu();
+        if (!this.pop.contains(e.target) && !e.target.closest('[data-pop]')) this.closePop();
+      });
+      window.addEventListener('resize', () => {
+        const fs = window.innerHeight === screen.height && window.innerWidth === screen.width;
+        this.fsBtn.replaceChildren(icon(fs ? 'minimize' : 'maximize', { size: 20 }));
       });
     }
 
     // ---------- lifecycle ----------
-    async play(item, { startAt = 0 } = {}) {
+    // opts.audioId / opts.subId / opts.quality preset the tracks and quality for this playback only.
+    async play(item, { startAt = 0, audioId, subId, quality } = {}) {
       this.stopInternal();
-      this.root.classList.add('on');
-      document.body.classList.add('playing');
+      this.preset = { audioId, subId };
+      this.qualityOverride = quality || null;
+      if (!this.tile) {
+        this.root.classList.add('on');
+        document.body.classList.add('playing');
+      }
       this.errorBox.classList.remove('on');
       this.spinner.classList.add('on');
       this.nextCard.classList.remove('on');
@@ -149,13 +170,23 @@
         this.nextEp = undefined;
         this.nextCancelled = false;
         this.isEpisode = meta.type === 'episode';
-        this.titleEl.textContent = this.isEpisode
-          ? `${meta.grandparentTitle} · ${epCode(meta)} · ${meta.title}`
-          : `${meta.title}${meta.year ? ` (${meta.year})` : ''}`;
+        this.titleEl.textContent = this.isEpisode ? meta.grandparentTitle : meta.title;
+        this.subTitleEl.textContent = this.isEpisode ? `${epCode(meta)} · ${meta.title}` : [meta.year, meta.duration && fmtDuration(meta.duration)].filter(Boolean).join(' · ');
+        const m = this.media;
+        this.techEl.textContent = [
+          m.videoResolution && (/^\d+$/.test(m.videoResolution) ? m.videoResolution + 'p' : m.videoResolution.toUpperCase()),
+          String(m.videoCodec || '').toUpperCase(),
+          m.bitrate && `${(m.bitrate / 1000).toFixed(1)} Mbps`
+        ].filter(Boolean).join(' · ');
         this.pickTracks();
+        if (this.preset.audioId != null) this.audioId = this.preset.audioId;
+        if (this.preset.subId !== undefined) this.subId = this.preset.subId;
         this.drawMarkers();
+        this.leaves = null;
         if (this.isEpisode) this.findNext();
         this.nextBtn.style.display = this.isEpisode ? '' : 'none';
+        this.epsBtn.style.display = this.isEpisode ? '' : 'none';
+        this.app.onPlayerStart?.(this);
         await this.load(startAt);
       } catch (err) {
         this.fail(err);
@@ -217,7 +248,7 @@
         await this.plex.selectStreams(this.part.id, { audioStreamID: this.audioId ?? undefined, subtitleStreamID: this.subId ?? 0 });
       } catch (e) { sofa.log('selectStreams failed', String(e)); }
 
-      const q = this.settings.quality;
+      const q = this.quality;
       const direct = q === 'direct' && !this.forceHls ? this.canDirectPlay() : 'quality setting';
       const sub = this.sub;
 
@@ -239,8 +270,9 @@
       }
 
       if (sub && sub.key && Subtitles.isTextSub(sub)) this.loadExternalSub(sub);
-      this.modeEl.textContent = this.mode === 'direct' ? 'Direct Play' : (QUALITY.find(x => x.id === q)?.short || '') + ' · stream';
-      this.video.volume = this.settings.volume ?? 1;
+      this.statusEl.replaceChildren(this.mode === 'direct' ? pill('Direct Play', 'ok') : pill('Converted'));
+      // Multi-view tiles stay unmuted at volume 0: Chromium pauses muted media in a hidden window.
+      this.video.volume = this.tile ? (this.tileVolume ?? 0) : (this.settings.volume ?? 1);
       this.volume.value = this.video.volume;
       this.video.play().catch(() => {});
       this.startTimers();
@@ -248,7 +280,7 @@
     }
 
     hlsParams(offset, subMode) {
-      const q = QUALITY.find(x => x.id === this.settings.quality) || QUALITY[1];
+      const q = QUALITY.find(x => x.id === this.quality) || QUALITY[1];
       const p = {
         hasMDE: 1,
         path: `/library/metadata/${this.meta.ratingKey}`,
@@ -415,9 +447,11 @@
 
     exit() {
       const meta = this.meta;
-      this.closeMenu();
+      this.closePop();
       this.stopInternal();
       this.meta = null;
+      if (this.tile) return;
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
       this.root.classList.remove('on');
       document.body.classList.remove('playing');
       sofa.fullscreen(false);
@@ -485,6 +519,7 @@
         if (!this.meta || this.meta.ratingKey !== key) return;
         const i = leaves.findIndex(l => l.ratingKey === key);
         this.nextEp = i >= 0 ? leaves[i + 1] || null : null;
+        this.leaves = leaves;
       } catch { this.nextEp = null; }
       this.nextBtn.disabled = !this.nextEp;
     }
@@ -497,6 +532,7 @@
       if (!this.meta) return;
       const t = this.time();
       this.updateUi();
+      if (this.tile) return;
 
       const m = this.activeMarker(t);
       const s = this.settings;
@@ -589,34 +625,61 @@
 
     onEnded() {
       if (!this.scrobbled && this.meta) { this.scrobbled = true; this.plex.scrobble(this.meta.ratingKey).catch(() => {}); }
+      if (this.tile) return;
       if (this.isEpisode && this.nextEp && this.settings.autoPlayNext && !this.nextCancelled) this.playNext();
       else this.exit();
     }
 
-    // ---------- menus ----------
-    openMenu(kind, e) {
+    // ---------- popovers: tracks, quality, episodes ----------
+    togglePop(kind, e) {
       e.stopPropagation();
-      if (this.menu.dataset.kind === kind && this.menu.classList.contains('on')) return this.closeMenu();
-      const items = [];
-      const item = (label, active, fn, sub) => items.push(h('button.m-item' + (active ? '.active' : ''), { onclick: () => { this.closeMenu(); fn(); } }, h('span', label), sub ? h('small', sub) : null));
-      if (kind === 'audio') {
-        for (const a of this.audioStreams) item(a.displayTitle || a.title || a.language || `Track ${a.index}`, a.id === this.audioId, () => this.changeAudio(a), a.title && a.title !== a.displayTitle ? a.title : null);
-      } else if (kind === 'subs') {
-        item('Off', this.subId == null, () => this.changeSub(null));
-        for (const x of this.subStreams) {
-          const kindTxt = [x.forced ? 'forced' : '', x.key ? 'external' : 'embedded', Subtitles.isTextSub(x) ? '' : 'image, burned in'].filter(Boolean).join(' · ');
-          item(x.displayTitle || x.language || `Track ${x.index}`, x.id === this.subId, () => this.changeSub(x), [x.title, kindTxt].filter(Boolean).join(' — '));
-        }
+      if (this.pop.dataset.kind === kind && this.pop.classList.contains('on')) return this.closePop();
+      const item = (cls, active, label, detail, fn) => h(`button.${cls}` + (active ? '.active' : ''), { onclick: () => { this.closePop(); fn(); } },
+        h('span.t-check', active ? icon('check', { size: 14, stroke: 2.5 }) : null),
+        h('span', h('b', label), detail ? h('small', detail) : null));
+      let body;
+      if (kind === 'tracks') {
+        const audio = this.audioStreams.map(a => item('t-item', a.id === this.audioId, a.language || a.displayTitle || `Track ${a.index}`,
+          [a.audioChannelLayout || (a.channels ? `${a.channels} ch` : ''), String(a.codec || '').toUpperCase(), a.title, a.default ? 'default' : ''].filter(Boolean).join(' · '),
+          () => this.changeAudio(a)));
+        const subs = [item('t-item', this.subId == null, 'Off', null, () => this.changeSub(null))].concat(this.subStreams.map(x => item('t-item', x.id === this.subId,
+          x.language || x.displayTitle || `Track ${x.index}`,
+          [x.forced ? 'forced' : '', x.title, String(x.codec || '').toUpperCase(), Subtitles.isTextSub(x) ? '' : 'converted'].filter(Boolean).join(' · '),
+          () => this.changeSub(x))));
+        body = h('div.tracks',
+          h('div.tracks-cols',
+            h('div.tracks-col', h('div.eyebrow', 'Audio'), audio),
+            h('div.tracks-col', h('div.eyebrow', 'Subtitles'), subs)),
+          h('div.tracks-foot',
+            h('span', this.isEpisode ? `Remembered for ${this.meta.grandparentTitle}` : 'Applies to this movie'),
+            h('button', { onclick: () => { this.exit(); this.app.go('settings', { page: 'style' }); } }, 'Subtitle style')));
+        this.root.classList.add('tracks-open');
+      } else if (kind === 'quality') {
+        body = h('div.qmenu', h('div.eyebrow', 'Quality'),
+          QUALITY.map(q => item('t-item', q.id === this.quality, q.label, null, () => this.changeQuality(q.id))));
       } else {
-        for (const q of QUALITY) item(q.label, q.id === this.settings.quality, () => this.changeQuality(q.id));
+        const season = (this.leaves || []).filter(l => l.parentRatingKey === this.meta.parentRatingKey);
+        body = h('div.eps-panel', h('div.eyebrow', this.meta.parentTitle || 'Episodes'),
+          season.map(ep => h('button.e-item' + (ep.ratingKey === this.meta.ratingKey ? '.active' : ''), {
+            onclick: () => { this.closePop(); if (ep.ratingKey !== this.meta.ratingKey) this.play(ep, { startAt: ep.viewOffset && !ep.viewCount ? ep.viewOffset / 1000 : 0 }); }
+          },
+          h('div.art', ep.thumb ? h('img', { src: this.plex.image(ep.thumb, 192, 108), loading: 'lazy' }) : null),
+          h('span', h('b', `${epCode(ep)} · ${ep.title}`), h('small', ep.duration ? fmtDuration(ep.duration) : '')))));
+        if (!season.length) body.append(h('div.muted.small', { style: { padding: '8px 10px' } }, 'Loading…'));
       }
-      this.menu.replaceChildren(h('div.m-head', kind === 'audio' ? 'Audio' : kind === 'subs' ? 'Subtitles' : 'Quality'), ...items);
-      this.menu.dataset.kind = kind;
-      const r = e.currentTarget.getBoundingClientRect();
-      this.menu.style.right = `${Math.max(12, window.innerWidth - r.right)}px`;
-      this.menu.classList.add('on');
+      this.pop.replaceChildren(body);
+      this.pop.dataset.kind = kind;
+      this.pop.classList.add('on');
     }
-    closeMenu() { this.menu.classList.remove('on'); }
+    closePop() {
+      this.pop.classList.remove('on');
+      this.root.classList.remove('tracks-open');
+    }
+
+    togglePip() {
+      if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+      else this.video.requestPictureInPicture().catch(() => toast('Picture in picture is not available.'));
+    }
 
     saveSeriesPref(patch) {
       if (!this.isEpisode) return;
@@ -653,6 +716,7 @@
     }
 
     changeQuality(id) {
+      this.qualityOverride = null;
       this.app.saveSettings({ quality: id });
       this.forceHls = false;
       this.load(this.time());
@@ -662,14 +726,23 @@
     updateUi() {
       const t = this.time();
       const d = this.duration || 1;
-      this.playBtn.textContent = this.video.paused ? '▶' : '❚❚';
+      // Icons are rebuilt only when their state changes.
+      const state = `${this.video.paused}|${this.video.muted || this.video.volume === 0}|${this.mode}|${this.quality}`;
+      if (state !== this.uiState) {
+        this.uiState = state;
+        this.playBtn.replaceChildren(icon(this.video.paused ? 'play' : 'pause', { size: 20 }));
+        this.muteBtn.replaceChildren(icon(this.video.muted || this.video.volume === 0 ? 'volume-x' : 'volume-2', { size: 20 }));
+        // A Direct Play preference that fell back to a converted stream plays at original quality.
+        const label = this.mode === 'direct' ? 'Direct Play' : this.quality === 'direct' ? 'Original' : QUALITY.find(q => q.id === this.quality)?.short;
+        this.qualBtn.replaceChildren(icon('gauge', { size: 16 }), label || 'Quality');
+      }
       this.timeEl.textContent = `${fmtTime(t)} / ${fmtTime(d)}`;
       this.seekFill.style.width = `${(t / d) * 100}%`;
+      this.seekThumb.style.left = `${(t / d) * 100}%`;
       const b = this.video.buffered;
       this.seekBuf.style.width = b.length ? `${(b.end(b.length - 1) / d) * 100}%` : '0';
-      this.audioBtn.style.display = this.audioStreams?.length > 1 ? '' : 'none';
-      this.subBtn.textContent = this.sub ? `Subtitles: ${this.sub.languageCode || 'on'}` : 'Subtitles';
-      this.qualBtn.textContent = QUALITY.find(q => q.id === this.settings.quality)?.short || 'Quality';
+      this.ccBtn.classList.toggle('on', this.subId != null);
+      if (this.tile) return;
       if (Math.abs((this.settings.volume ?? 1) - this.video.volume) > 0.01) this.app.saveSettings({ volume: this.video.volume });
     }
 
@@ -677,12 +750,12 @@
       this.root.classList.add('show-ui');
       clearTimeout(this.hideTimer);
       this.hideTimer = setTimeout(() => {
-        if (!this.video.paused && !this.menu.classList.contains('on')) this.root.classList.remove('show-ui');
+        if (!this.video.paused && !this.pop.classList.contains('on')) this.root.classList.remove('show-ui');
       }, 3000);
     }
 
     onKey(e) {
-      if (!this.root.classList.contains('on')) return;
+      if (this.tile || !this.root.classList.contains('on')) return;
       if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
       const k = e.key.toLowerCase();
       const map = {
@@ -693,7 +766,7 @@
         f: () => sofa.fullscreen(), m: () => { this.video.muted = !this.video.muted; },
         n: () => this.playNext(), s: () => this.doSkip(),
         escape: () => {
-          if (this.menu.classList.contains('on')) return this.closeMenu();
+          if (this.pop.classList.contains('on')) return this.closePop();
           if (window.innerHeight === screen.height && window.innerWidth === screen.width) sofa.fullscreen(false);
           else this.exit();
         },

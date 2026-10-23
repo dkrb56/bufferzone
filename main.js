@@ -31,7 +31,14 @@ const defaultSettings = {
   autoPlayNext: true,
   nextCountdown: 10,           // seconds
   hiddenLibraries: [],
-  seriesPrefs: {}              // { [showRatingKey]: { audioLang, subtitleLang, subtitleOff } }
+  seriesPrefs: {},             // { [showRatingKey]: { audioLang, subtitleLang, subtitleOff } }
+  pinned: [],                  // [{ key, title, type }] shown in the icon rail
+  profileId: null,             // Plex Home user id of the last profile
+  profileRules: {},            // { [userId]: parental rules, see DEFAULT_RULES in renderer/js/app.js }
+  homeTab: 'all',
+  lastLibrary: {},             // { movie|show|kids: sectionKey }
+  libraryFilters: {},
+  mvLayout: '2x2'
 };
 
 function readSettings() {
@@ -105,9 +112,10 @@ function createWindow() {
     height: 860,
     minWidth: 960,
     minHeight: 600,
-    backgroundColor: '#0d0f12',
+    backgroundColor: '#050505',
     autoHideMenuBar: true,
     title: 'Buffer Zone',
+    icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

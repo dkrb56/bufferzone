@@ -59,6 +59,69 @@
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
   }
 
+  const ic = (name, opts) => window.Sofa.icon(name, opts);
+
+  // btn('Play', { kind: 'primary', size: 'lg', icon: 'play', onclick })
+  function btn(label, { kind = '', size = '', icon, full, onclick, title, disabled } = {}) {
+    const cls = ['button.btn', kind, size, full ? 'full' : ''].filter(Boolean).join('.');
+    return h(cls, { onclick, title, disabled }, icon ? ic(icon, { size: size === 'lg' ? 18 : 16 }) : null, label);
+  }
+  function iconBtn(name, { title, onclick, cls = '', size = 18, stroke } = {}) {
+    return h('button.icon-btn' + (cls ? '.' + cls.split(' ').join('.') : ''), { title, onclick }, ic(name, { size, stroke }));
+  }
+  function pill(text, tone = '', { sm, dot = true } = {}) {
+    return h('span.pill' + (tone ? '.' + tone : '') + (sm ? '.sm' : ''), dot ? h('span.dot') : null, text);
+  }
+  function switchEl(checked, onchange) {
+    const input = h('input', { type: 'checkbox', checked, onchange: (e) => onchange(e.target.checked) });
+    return h('label.switch', input, h('span.track'));
+  }
+  // options: [[value, label], ...]
+  function selectEl(options, value, onchange) {
+    const sel = h('select', { onchange: (e) => onchange(e.target.value) },
+      options.map(([v, l]) => h('option', { value: v, selected: String(v) === String(value) }, l)));
+    return h('div.select', sel, ic('chevron-down', { size: 14 }));
+  }
+  function checkEl(checked, label, onchange) {
+    return h('label.check', h('input', { type: 'checkbox', checked, onchange: (e) => onchange(e.target.checked) }), label);
+  }
+  // Wraps every case-insensitive match of q in <mark>.
+  function highlight(text, q) {
+    text = String(text || '');
+    if (!q) return [text];
+    const out = [];
+    const lower = text.toLowerCase(), ql = q.toLowerCase();
+    let i = 0, j;
+    while ((j = lower.indexOf(ql, i)) >= 0) {
+      if (j > i) out.push(text.slice(i, j));
+      out.push(h('mark', text.slice(j, j + q.length)));
+      i = j + q.length;
+    }
+    if (i < text.length) out.push(text.slice(i));
+    return out;
+  }
+  // PIN prompt. Resolves with the PIN, or null when cancelled. `check(pin)` returns an error text or null.
+  function askPin(title, text, check) {
+    return new Promise((resolve) => {
+      const err = h('div.err');
+      const input = h('input', { type: 'password', inputMode: 'numeric', maxLength: 4, autocomplete: 'off' });
+      const close = (v) => { bg.remove(); resolve(v); };
+      const submit = async () => {
+        const pin = input.value.trim();
+        if (pin.length !== 4) { err.textContent = 'Type the 4-digit PIN.'; return; }
+        const problem = check ? await check(pin) : null;
+        if (problem) { err.textContent = problem; input.select(); return; }
+        close(pin);
+      };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') close(null); });
+      const bg = h('div.modal-bg', h('div.modal',
+        h('h2', title), h('p.muted', text), input, err,
+        h('div.btn-row', { style: { justifyContent: 'flex-end' } }, btn('Cancel', { kind: 'ghost', onclick: () => close(null) }), btn('Continue', { kind: 'primary', onclick: submit }))));
+      document.body.append(bg);
+      input.focus();
+    });
+  }
+
   const LANGUAGES = [
     ['eng', 'English'], ['slv', 'Slovenian'], ['hrv', 'Croatian'], ['srp', 'Serbian'], ['bos', 'Bosnian'],
     ['ger', 'German'], ['fre', 'French'], ['spa', 'Spanish'], ['ita', 'Italian'], ['por', 'Portuguese'],
@@ -69,5 +132,5 @@
   ];
 
   window.Sofa = window.Sofa || {};
-  Object.assign(window.Sofa, { h, append, fmtTime, fmtDuration, epCode, toast, debounce, LANGUAGES });
+  Object.assign(window.Sofa, { h, append, fmtTime, fmtDuration, epCode, toast, debounce, LANGUAGES, btn, iconBtn, pill, switchEl, selectEl, checkEl, highlight, askPin });
 })();

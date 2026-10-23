@@ -1,48 +1,61 @@
-// App shell: sign-in, server choice, navigation and all non-player views.
+// App shell: start-up, onboarding, profiles, icon rail, routing and shared helpers.
+// Views live in views.js and settings.js; they register on Sofa.views and run with `this` = app.
 (function () {
-  const { Plex, Player, h, fmtTime, fmtDuration, epCode, toast, debounce, LANGUAGES, QUALITY } = window.Sofa;
+  const S = window.Sofa;
+  const { Plex, Player, h, toast, icon, btn, pill } = S;
+  S.views = S.views || {};
 
-  const SORTS = [
-    ['addedAt:desc', 'Recently added'],
-    ['titleSort', 'Title A–Z'],
-    ['titleSort:desc', 'Title Z–A'],
-    ['year:desc', 'Year (newest)'],
-    ['year', 'Year (oldest)'],
-    ['audienceRating:desc', 'Audience rating'],
-    ['rating:desc', 'Critic rating'],
-    ['lastViewedAt:desc', 'Recently watched'],
-    ['originallyAvailableAt:desc', 'Release date']
+  // Content rating -> minimum age. Country prefixes such as "de/12" are removed first.
+  const RATING_AGE = {
+    'G': 0, 'TV-Y': 0, 'TV-G': 0, 'U': 0, 'APPROVED': 0, 'PASSED': 0,
+    'TV-Y7': 7, 'TV-Y7-FV': 7, 'PG': 10, 'TV-PG': 10, '12A': 12, 'PG-13': 13, 'TV-14': 14,
+    'R': 17, 'TV-MA': 17, 'NC-17': 18, 'X': 18
+  };
+  function ageOf(rating) {
+    if (!rating) return null;
+    const r = String(rating).replace(/^[a-z]{2}\//i, '').toUpperCase();
+    if (r in RATING_AGE) return RATING_AGE[r];
+    const n = parseInt(r, 10);
+    return isNaN(n) ? null : n;
+  }
+  S.ageOf = ageOf;
+  S.DEFAULT_RULES = { restrict: true, maxAge: 12, unrated: 'hide', libraries: null, pinToLeave: true, multiview: false };
+
+  const STEPS = [
+    ['Sign in with Plex', 'Use your Plex account'],
+    ['Choose a server', 'Pick whose library to watch'],
+    ['Pick libraries', 'Hide the ones you do not use'],
+    ['Choose profile', 'Plex Home users on that server']
   ];
 
   class App {
     constructor() {
       this.main = document.getElementById('main');
-      this.nav = document.getElementById('nav');
+      this.rail = document.getElementById('rail');
       this.history = [];
+      this.homeUsers = [];
+      this.profile = null;
     }
 
     async init() {
       this.settings = await sofa.getSettings();
       this.plex = new Plex(this.settings.clientId);
       this.player = new Player(this);
-      document.addEventListener('keydown', (e) => {
-        if (document.body.classList.contains('playing')) return;
-        if ((e.ctrlKey && e.key.toLowerCase() === 'f') || (e.key === '/' && e.target.tagName !== 'INPUT')) {
-          e.preventDefault();
-          document.getElementById('search')?.focus();
-        }
-        if (e.key === 'Backspace' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') this.back();
-      });
+      this.multiview = new S.MultiView(this);
+      this.palette = new S.Palette(this);
+      document.addEventListener('keydown', (e) => this.onKey(e));
+
       const token = await sofa.getToken();
-      if (!token) return this.showLogin();
-      this.plex.token = token;
+      if (!token) return this.onboarding(1);
+      this.plex.token = this.plex.accountToken = token;
       try {
         this.user = await this.plex.user();
       } catch (e) {
-        if (e.status === 401) { await sofa.setToken(null); return this.showLogin(); }
+        if (e.status === 401) { await sofa.setToken(null); return this.onboarding(1); }
         return this.showMessage('Cannot reach plex.tv', 'Check your internet connection.', () => this.init());
       }
-      await this.chooseServer(false);
+      if (!this.settings.serverId) return this.onboarding(2);
+      await this.reconnect();
     }
 
     saveSettings(patch) {
@@ -50,25 +63,64 @@
       sofa.setSettings(patch);
     }
 
-    // ---------- full-screen states ----------
+    onKey(e) {
+      if (document.body.classList.contains('playing') || document.body.classList.contains('bare')) return;
+      if (this.palette.isOpen || this.multiview.isOpen || document.querySelector('.modal-bg')) return;
+      const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName);
+      if ((e.ctrlKey && e.key.toLowerCase() === 'f') || (e.key === '/' && !typing)) {
+        e.preventDefault();
+        this.palette.open();
+      } else if (e.key === 'Backspace' && !typing) {
+        this.back();
+      } else if (this.current?.name === 'home' && !typing && this.homeKeys) {
+        this.homeKeys(e);
+      }
+    }
+
+    // ---------- bare screens ----------
     bare(...children) {
-      this.nav.replaceChildren();
       document.body.classList.add('bare');
-      this.main.replaceChildren(h('div.center', ...children));
+      this.rail.replaceChildren();
+      this.main.replaceChildren(...children);
     }
 
     showMessage(title, msg, retry) {
-      this.bare(h('div.panel', h('h2', title), h('p.muted', msg), retry ? h('button.btn.primary', { onclick: retry }, 'Try again') : null));
+      this.bare(h('div.center', h('div.panel', h('h2', title), h('p.muted', msg), retry ? btn('Try again', { kind: 'primary', onclick: retry }) : null)));
     }
 
-    showLogin() {
-      const status = h('p.muted', 'You sign in on the Plex website. This app never sees your password.');
-      const btn = h('button.btn.primary.lg', { onclick: () => this.login(btn, status) }, 'Sign in with Plex');
-      this.bare(h('div.panel', h('div.logo.big', 'Buffer Zone'), h('p', 'A clean player for your friend\'s Plex server.'), btn, status));
+    lockup(size) {
+      return h('div.lockup', { style: { fontSize: size + 'px', gap: Math.round(size * 0.43) + 'px' } },
+        h('img', { src: 'assets/logo-mark.svg', alt: '', style: { width: Math.round(size * 1.6) + 'px', height: Math.round(size * 1.6) + 'px' } }),
+        'Buffer Zone');
     }
 
-    async login(btn, status) {
-      btn.disabled = true;
+    // ---------- onboarding ----------
+    onboarding(step, state = {}) {
+      this.onb = { ...(this.onb || {}), ...state, step };
+      const left = h('div.onb-left',
+        this.lockup(28),
+        h('div.onb-tag', 'A clean player for your friend\'s Plex server.'),
+        h('div.steps', STEPS.map(([t, d], i) => {
+          const n = i + 1;
+          const cls = n < step ? '.done' : n === step ? '.cur' : '';
+          const detail = n === 1 && this.user ? `Signed in as ${this.user.username || this.user.email}` : d;
+          return h('div.step' + cls, h('div.step-dot', n < step ? icon('check', { size: 14, stroke: 3 }) : String(n)), h('div', h('div.step-t', t), h('div.step-d', detail)));
+        })),
+        h('div.onb-note', 'You sign in on the Plex website. This app never sees your password.'));
+      const right = h('div.onb-right');
+      this.bare(h('div.onb', left, right));
+      right.append(h('div.onb-step', `Step ${step} of 4`));
+      ({ 1: () => this.onbSignIn(right), 2: () => this.onbServers(right), 3: () => this.onbLibraries(right), 4: () => this.onbProfiles(right) })[step]();
+    }
+
+    onbSignIn(right) {
+      const status = h('p.muted');
+      const b = btn('Sign in with Plex', { kind: 'primary', size: 'lg', icon: 'arrow-right', onclick: () => this.login(b, status) });
+      right.append(h('h1', 'Sign in with Plex'), h('p.onb-help', 'Your browser opens the Plex website. Sign in there, then come back here.'), b, h('div', { style: { marginTop: '14px' } }, status));
+    }
+
+    async login(b, status) {
+      b.disabled = true;
       try {
         const pin = await this.plex.createPin();
         sofa.openExternal(this.plex.authUrl(pin.code));
@@ -79,88 +131,236 @@
           const token = await this.plex.checkPin(pin.id).catch(() => null);
           if (token) {
             await sofa.setToken(token);
-            this.plex.token = token;
+            this.plex.token = this.plex.accountToken = token;
             this.user = await this.plex.user();
-            return this.chooseServer(true);
+            return this.onboarding(2);
           }
         }
         status.textContent = 'Sign-in timed out. Try again.';
       } catch (e) {
         status.textContent = 'Sign-in failed: ' + e.message;
       }
-      btn.disabled = false;
+      b.disabled = false;
     }
 
-    async chooseServer(force) {
-      this.bare(h('div.spinner.on.static'), h('p.muted', 'Looking for servers…'));
+    async onbServers(right) {
+      right.append(h('h1', 'Choose a server'), h('p.onb-help', 'Servers shared with your Plex account. Friends\' servers are listed first.'));
+      const list = h('div', h('div.loading', 'Looking for servers…'));
+      const cont = btn('Continue', { kind: 'primary', size: 'lg', onclick: () => this.onbConnect(cont) });
+      cont.append(icon('arrow-right', { size: 18 }));
+      right.append(list, h('p.muted.small', 'Server not listed? Ask the owner to share a library with your Plex account.'),
+        h('div.onb-actions', btn('Back', { kind: 'ghost', onclick: () => this.onboarding(1) }), cont));
       let servers;
       try { servers = await this.plex.resources(); }
-      catch (e) { return this.showMessage('Cannot load servers', e.message, () => this.chooseServer(force)); }
-      if (!servers.length) return this.showMessage('No servers', 'Your account has no access to a Plex server. Ask your friend to share their library with you.', () => this.chooseServer(force));
-      // Friends' servers first.
+      catch (e) { list.replaceChildren(h('p.muted', 'Cannot load servers: ' + e.message)); return; }
       servers.sort((a, b) => (a.owned === b.owned ? a.name.localeCompare(b.name) : a.owned ? 1 : -1));
+      if (!servers.length) { list.replaceChildren(h('p.muted', 'Your account has no access to a Plex server.')); return; }
+      this.onb.servers = servers;
+      this.onb.selected = this.onb.selected || (servers.find(s => s.clientIdentifier === this.settings.serverId) || servers[0]).clientIdentifier;
+      const rows = servers.map(s => {
+        const st = h('span', pill('Checking', '', { dot: true }));
+        const detail = h('div.srv-detail', s.owned ? 'Your server' : `Shared by ${s.sourceTitle || 'a friend'}`);
+        const row = h('div.srv', { onclick: () => { this.onb.selected = s.clientIdentifier; rows.forEach(r => r.classList.toggle('sel', r === row)); } },
+          h('span.radio'), h('div.srv-icon', icon('server', { size: 20 })),
+          h('div', { style: { flex: 1, minWidth: 0 } }, h('div.srv-name', s.name), detail), st);
+        row.classList.toggle('sel', s.clientIdentifier === this.onb.selected);
+        this.plex.probe(s).then(c => {
+          const base = s.owned ? 'Your server' : `Shared by ${s.sourceTitle || 'a friend'}`;
+          if (!c) { st.replaceChildren(pill('Offline')); row.classList.add('off'); detail.textContent = base; }
+          else if (c.relay) { st.replaceChildren(pill('Relay', 'accent')); detail.textContent = `${base} · via Plex relay (limited speed)`; }
+          else { st.replaceChildren(pill('Online', 'ok')); detail.textContent = `${base} · ${c.local ? 'local network' : 'direct connection'}`; }
+        });
+        return row;
+      });
+      list.replaceChildren(...rows);
+    }
+
+    async onbConnect(b) {
+      const res = (this.onb.servers || []).find(s => s.clientIdentifier === this.onb.selected);
+      if (!res) return;
+      b.disabled = true;
+      try {
+        await this.connect(res);
+      } catch (e) {
+        b.disabled = false;
+        return toast(e.message);
+      }
+      this.onboarding(3);
+    }
+
+    onbLibraries(right) {
+      right.append(h('h1', 'Pick libraries'), h('p.onb-help', `Libraries on ${this.plex.server.name}. Hidden libraries do not show in the app. You can change this later in Settings.`));
+      const card = h('div.s-card', h('div.s-checks', this.sections.map(sec => S.checkEl(!this.settings.hiddenLibraries.includes(sec.key), sec.title, (on) => {
+        const hidden = new Set(this.settings.hiddenLibraries);
+        if (on) hidden.delete(sec.key); else hidden.add(sec.key);
+        this.saveSettings({ hiddenLibraries: [...hidden] });
+      }))));
+      const cont = btn('Continue', { kind: 'primary', size: 'lg', onclick: () => (this.homeUsers.length > 1 ? this.onboarding(4) : this.enterApp()) });
+      cont.append(icon('arrow-right', { size: 18 }));
+      right.append(card, h('div.onb-actions', btn('Back', { kind: 'ghost', onclick: () => this.onboarding(2) }), cont));
+    }
+
+    onbProfiles(right) {
+      right.append(h('h1', 'Choose profile'), h('p.onb-help', 'Plex Home users on your account. Each profile has its own watch history.'));
+      right.append(this.profileTiles());
+    }
+
+    // ---------- server ----------
+    async reconnect() {
+      this.bare(h('div.center', h('div.spinner'), h('p.muted', 'Connecting…')));
+      let servers;
+      try { servers = await this.plex.resources(); }
+      catch (e) { return this.showMessage('Cannot load servers', e.message, () => this.reconnect()); }
       const saved = servers.find(s => s.clientIdentifier === this.settings.serverId);
-      if (saved && !force) return this.connect(saved);
-      if (servers.length === 1) return this.connect(servers[0]);
-      this.bare(h('div.panel',
-        h('h2', 'Choose a server'),
-        h('div.server-list', servers.map(s => h('button.server', { onclick: () => this.connect(s) },
-          h('span.s-name', s.name),
-          h('span.muted', s.owned ? 'Your server' : `Shared by ${s.sourceTitle || 'a friend'}`),
-          s.presence === false ? h('span.badge.off', 'offline') : null
-        )))
-      ));
+      if (!saved) return this.onboarding(2);
+      try { await this.connect(saved); }
+      catch (e) { return this.showMessage('Cannot connect', e.message, () => this.onboarding(2)); }
+      // Profiles: ask "Who's watching?" when the account has Plex Home users.
+      const last = this.homeUsers.find(u => u.id === this.settings.profileId);
+      if (this.homeUsers.length > 1 && (!last || last.protected || !last.admin)) return this.showProfiles();
+      this.enterApp();
     }
 
     async connect(resource) {
-      this.bare(h('div.spinner.on.static'), h('p.muted', `Connecting to ${resource.name}…`));
-      try {
-        await this.plex.connect(resource);
-      } catch (e) {
-        return this.showMessage('Cannot connect', e.message, () => this.chooseServer(true));
-      }
+      await this.plex.connect(resource);
       this.saveSettings({ serverId: resource.clientIdentifier });
-      try { this.sections = await this.plex.sections(); }
-      catch (e) { return this.showMessage('Cannot load libraries', e.message, () => this.connect(resource)); }
+      this.sections = await this.plex.sections();
+      this.homeUsers = await this.plex.homeUsers().catch(() => []);
+      if (!this.profile) this.profile = this.homeUsers.find(u => u.admin) || { id: this.user.id, title: this.user.username, admin: true };
+    }
+
+    enterApp() {
       document.body.classList.remove('bare');
-      this.buildNav();
+      this.buildRail();
       this.history = [];
-      this.go('home');
+      this.go('home', {}, { root: true });
+      this.loadWatchlist();
+    }
+
+    // ---------- profiles & parental rules ----------
+    // Managed Plex Home users get the default rules until the admin changes them.
+    get rules() {
+      if (!this.profile || this.profile.admin) return null;
+      const saved = this.settings.profileRules?.[this.profile.id];
+      if (saved) return { ...S.DEFAULT_RULES, ...saved };
+      return this.profile.restricted ? S.DEFAULT_RULES : null;
+    }
+    sectionAllowed(key) {
+      const r = this.rules;
+      return !r || !r.libraries || r.libraries.includes(String(key));
+    }
+    itemAllowed(item) {
+      const r = this.rules;
+      if (!r) return true;
+      if (item.librarySectionID && !this.sectionAllowed(item.librarySectionID)) return false;
+      if (!r.restrict) return true;
+      const rating = item.contentRating || item.grandparentContentRating;
+      const age = ageOf(rating);
+      if (age === null) return r.unrated !== 'hide';
+      return age <= Number(r.maxAge ?? 12);
+    }
+    allow(items) { return (items || []).filter(i => this.itemAllowed(i)); }
+    get multiviewAllowed() { const r = this.rules; return !r || !!r.multiview; }
+
+    visibleSections() {
+      return (this.sections || []).filter(s => !this.settings.hiddenLibraries.includes(s.key) && this.sectionAllowed(s.key));
+    }
+    groups() {
+      const secs = this.visibleSections();
+      const kids = secs.filter(s => /kid/i.test(s.title));
+      return {
+        movie: secs.filter(s => s.type === 'movie' && !kids.includes(s)),
+        show: secs.filter(s => s.type === 'show' && !kids.includes(s)),
+        kids
+      };
+    }
+
+    // ---------- watchlist & pins ----------
+    async loadWatchlist() {
+      try {
+        this.watchlist = await this.plex.watchlist();
+        this.watchGuids = new Set(this.watchlist.map(w => w.guid));
+      } catch (e) {
+        sofa.log('watchlist failed', String(e));
+        this.watchlist = [];
+        this.watchGuids = new Set();
+      }
+      return this.watchlist;
+    }
+    inWatchlist(item) { return !!(item?.guid && this.watchGuids?.has(item.guid)); }
+    async toggleWatchlist(item) {
+      if (!item.guid || !item.guid.startsWith('plex://')) return toast('This title cannot be added to the watchlist.');
+      try {
+        if (this.inWatchlist(item)) {
+          await this.plex.removeFromWatchlist(item.guid);
+          this.watchGuids.delete(item.guid);
+          toast('Removed from watchlist');
+        } else {
+          await this.plex.addToWatchlist(item.guid);
+          this.watchGuids.add(item.guid);
+          toast('Added to watchlist');
+        }
+        this.watchlist = null;
+      } catch (e) { toast('Watchlist failed: ' + e.message); }
+    }
+    isPinned(item) { return (this.settings.pinned || []).some(p => p.key === String(item.ratingKey)); }
+    togglePin(item) {
+      const list = (this.settings.pinned || []).filter(p => p.key !== String(item.ratingKey));
+      if (list.length === (this.settings.pinned || []).length) list.push({ key: String(item.ratingKey), title: item.title, type: item.type });
+      this.saveSettings({ pinned: list });
+      toast(this.isPinned(item) ? 'Pinned to the sidebar' : 'Unpinned');
+      this.buildRail();
+    }
+
+    // ---------- icon rail ----------
+    buildRail() {
+      const g = this.groups();
+      const lastLib = (type, list) => {
+        const id = this.settings.lastLibrary?.[type];
+        return list.find(s => s.key === id)?.key || list[0]?.key;
+      };
+      const item = (name, label, key, onclick) => {
+        const el = h('button.rail-item', { title: label, onclick }, icon(name, { size: 18 }));
+        el.dataset.key = key;
+        return el;
+      };
+      const items = [
+        item('house', 'Home', 'home', () => this.go('home', {}, { root: true })),
+        item('search', 'Search (Ctrl+F)', 'search', () => this.palette.open()),
+        g.movie.length ? item('film', 'Movies', 'movie', () => this.go('library', { id: lastLib('movie', g.movie) }, { root: true })) : null,
+        g.show.length ? item('tv', 'Series', 'show', () => this.go('library', { id: lastLib('show', g.show) }, { root: true })) : null,
+        g.kids.length ? item('smile', 'Kids', 'kids', () => this.go('library', { id: lastLib('kids', g.kids) }, { root: true })) : null,
+        item('bookmark', 'Watchlist', 'watchlist', () => this.go('watchlist', {}, { root: true })),
+        this.multiviewAllowed ? item('layout-grid', 'Multi-view', 'multiview', () => this.multiview.open()) : null
+      ];
+      const pins = (this.settings.pinned || []).map(p => item('pin', p.title, 'pin:' + p.key, () => this.open({ ratingKey: p.key, type: p.type })));
+      const name = this.profile?.title || this.user?.username || '?';
+      this.rail.replaceChildren(...[
+        h('div.rail-logo', { title: 'Home', onclick: () => this.go('home', {}, { root: true }) }, h('img', { src: 'assets/logo-mark.svg', alt: 'Buffer Zone' })),
+        ...items,
+        pins.length ? h('div.rail-div') : null,
+        h('div.rail-pins', pins),
+        h('div.spacer'),
+        item('settings', 'Settings', 'settings', () => this.go('settings', {}, { root: true })),
+        h('div.rail-div'),
+        h('button.avatar', { title: `${name} · switch profile`, onclick: () => (this.homeUsers.length > 1 ? this.showProfiles() : this.go('settings', { page: 'account' }, { root: true })) }, name[0].toUpperCase())
+      ].filter(Boolean));
+      this.markRail();
+    }
+
+    markRail() {
+      const cur = this.current;
+      let key = cur?.name;
+      if (cur?.name === 'library') {
+        const sec = this.sections?.find(s => s.key === cur.args.id);
+        key = sec && /kid/i.test(sec.title) ? 'kids' : sec?.type;
+      } else if (cur && ['show', 'movie', 'collection'].includes(cur.name) && this.isPinned({ ratingKey: cur.args.key })) {
+        key = 'pin:' + cur.args.key;
+      }
+      for (const el of this.rail.querySelectorAll('.rail-item')) el.classList.toggle('active', el.dataset.key === key);
     }
 
     // ---------- navigation ----------
-    visibleSections() {
-      return this.sections.filter(s => !this.settings.hiddenLibraries.includes(s.key));
-    }
-
-    buildNav() {
-      const search = h('input#search', {
-        type: 'search', placeholder: 'Search movies and series…  (Ctrl+F)',
-        oninput: debounce(() => {
-          const q = search.value.trim();
-          if (q.length >= 2) this.go('search', { q }, { replace: this.current?.name === 'search' });
-          else if (!q && this.current?.name === 'search') this.back();
-        }, 250),
-        onkeydown: (e) => { if (e.key === 'Escape') { search.value = ''; search.blur(); if (this.current?.name === 'search') this.back(); } }
-      });
-      this.navLinks = {};
-      const link = (label, name, args) => {
-        const el = h('button.nav-link', { onclick: () => this.go(name, args, { root: true }) }, label);
-        this.navLinks[name + (args?.id || '')] = el;
-        return el;
-      };
-      this.backBtn = h('button.nav-back', { title: 'Back (Backspace)', onclick: () => this.back() }, '←');
-      this.nav.replaceChildren(
-        this.backBtn,
-        h('div.logo', 'Buffer Zone'),
-        link('Home', 'home'),
-        ...this.visibleSections().map(s => link(s.title, 'library', { id: s.key })),
-        h('div.spacer'),
-        search,
-        h('button.nav-link.icon', { title: 'Settings', onclick: () => this.go('settings') }, '⚙')
-      );
-    }
-
     go(name, args = {}, { replace = false, root = false } = {}) {
       if (root) this.history = [];
       else if (this.current && !replace) this.history.push({ ...this.current, scroll: this.main.scrollTop });
@@ -171,77 +371,32 @@
     back() {
       const prev = this.history.pop();
       if (!prev) return;
-      if (prev.name !== 'search') { const s = document.getElementById('search'); if (s) s.value = ''; }
       this.current = prev;
       this.render(prev.scroll);
     }
 
     async render(scroll = 0) {
       const { name, args } = this.current;
-      for (const [k, el] of Object.entries(this.navLinks || {})) el.classList.toggle('active', k === name + (args.id || ''));
-      this.backBtn.style.visibility = this.history.length ? 'visible' : 'hidden';
+      this.markRail();
+      this.homeKeys = null;
       const token = (this.renderToken = Symbol());
       const view = h('div.view');
       this.main.replaceChildren(view);
       this.main.scrollTop = 0;
       try {
-        await this.views[name].call(this, view, args, () => token === this.renderToken);
+        await S.views[name].call(this, view, args, () => token === this.renderToken);
         if (scroll) requestAnimationFrame(() => { this.main.scrollTop = scroll; });
       } catch (e) {
         sofa.log('view error', name, String(e?.stack || e));
-        if (token === this.renderToken) view.replaceChildren(h('div.empty', h('h3', 'Something went wrong'), h('p.muted', e.message), h('button.btn', { onclick: () => this.render() }, 'Retry')));
+        if (token === this.renderToken) view.replaceChildren(h('div.empty', h('h2', 'Something went wrong'), h('p.muted', e.message), btn('Try again', { onclick: () => this.render() })));
       }
     }
 
-    onPlayerExit() {
-      if (this.current) this.render(this.main.scrollTop);
-    }
-
-    // ---------- playback entry ----------
-    play(item, { resume = true } = {}) {
-      const startAt = resume && item.viewOffset ? item.viewOffset / 1000 : 0;
-      this.player.play(item, { startAt });
-    }
-
-    // ---------- cards ----------
-    progressOf(item) {
-      if (!item.viewOffset || !item.duration) return 0;
-      return Math.min(1, item.viewOffset / item.duration);
-    }
-
-    posterCard(item) {
-      const p = this.plex;
-      const thumb = item.type === 'episode' ? item.grandparentThumb || item.parentThumb || item.thumb : item.type === 'season' ? item.thumb || item.parentThumb : item.thumb;
-      const watched = item.type === 'movie' ? item.viewCount > 0 : item.leafCount && item.viewedLeafCount >= item.leafCount;
-      const unwatchedEps = item.type === 'show' ? (item.leafCount || 0) - (item.viewedLeafCount || 0) : 0;
-      const prog = this.progressOf(item);
-      const title = item.type === 'episode' ? item.grandparentTitle : item.type === 'season' ? item.parentTitle : item.title;
-      const sub = item.type === 'episode' ? `${epCode(item)} · ${item.title}` : item.type === 'season' ? item.title : item.year || '';
-      return h('div.card.poster', { onclick: () => this.open(item), title },
-        h('div.img', thumb ? h('img', { src: p.image(thumb, 300, 450), loading: 'lazy' }) : h('div.noimg', title),
-          watched ? h('span.badge.ok', '✓') : unwatchedEps > 0 && item.viewedLeafCount ? h('span.badge', String(unwatchedEps)) : null,
-          prog ? h('div.prog', h('div', { style: { width: `${prog * 100}%` } })) : null),
-        h('div.c-title', title),
-        h('div.c-sub', sub)
-      );
-    }
-
-    wideCard(item, { playOnClick = false } = {}) {
-      const p = this.plex;
-      const img = item.type === 'episode' ? item.thumb || item.art || item.grandparentArt : item.art || item.thumb;
-      const prog = this.progressOf(item);
-      const title = item.type === 'episode' ? item.grandparentTitle : item.title;
-      const sub = item.type === 'episode' ? `${epCode(item)} · ${item.title}` : [item.year, item.duration && fmtDuration(item.duration)].filter(Boolean).join(' · ');
-      const left = item.viewOffset && item.duration ? `${Math.round((item.duration - item.viewOffset) / 60000)} min left` : '';
-      return h('div.card.wide', { onclick: () => (playOnClick ? this.play(item) : this.open(item)), title: playOnClick ? 'Play' : title },
-        h('div.img', img ? h('img', { src: p.image(img, 480, 270), loading: 'lazy' }) : h('div.noimg', title),
-          playOnClick ? h('div.play-ov', '▶') : null,
-          prog ? h('div.prog', h('div', { style: { width: `${prog * 100}%` } })) : null),
-        h('div.c-row',
-          h('div', h('div.c-title', title), h('div.c-sub', sub, left ? ` · ${left}` : '')),
-          item.type === 'episode' ? h('button.mini', { title: 'Open series', onclick: (e) => { e.stopPropagation(); this.go('show', { key: item.grandparentRatingKey }); } }, 'ⓘ') : null
-        )
-      );
+    backButton(label) {
+      if (!this.history.length) return null;
+      return label
+        ? btn(label, { kind: 'ghost', icon: 'arrow-left', onclick: () => this.back() })
+        : S.iconBtn('arrow-left', { title: 'Back (Backspace)', cls: 'boxed', onclick: () => this.back() });
     }
 
     open(item) {
@@ -249,287 +404,31 @@
       else if (item.type === 'show') this.go('show', { key: item.ratingKey });
       else if (item.type === 'season') this.go('show', { key: item.parentRatingKey, season: item.ratingKey });
       else if (item.type === 'episode') this.go('show', { key: item.grandparentRatingKey, season: item.parentRatingKey, focus: item.ratingKey });
+      else if (item.type === 'collection') this.go('collection', { key: item.ratingKey });
     }
 
-    row(title, items, cardFn) {
-      if (!items.length) return null;
-      return h('section.row', h('h2.row-title', title), h('div.row-scroll', items.map(cardFn)));
+    onPlayerExit() {
+      if (this.current && !document.body.classList.contains('bare')) this.render(this.main.scrollTop);
     }
 
-    // ---------- views ----------
-    get views() {
-      return {
-        home: async (view, _a, alive) => {
-          const secs = this.visibleSections();
-          view.append(h('div.loading', 'Loading…'));
-          const [cw, ...recent] = await Promise.all([
-            this.plex.continueWatching().catch(() => []),
-            ...secs.map(s => this.plex.recentlyAdded(s.key).catch(() => []))
-          ]);
-          if (!alive()) return;
-          const rows = [this.row('Continue Watching', cw, (i) => this.wideCard(i, { playOnClick: true }))];
-          secs.forEach((s, i) => rows.push(this.row(`Recently Added · ${s.title}`, recent[i], (it) => this.posterCard(it))));
-          view.replaceChildren(
-            h('div.server-line.muted', `${this.plex.server.name}`, this.plex.server.relay ? ' · via Plex relay (limited speed)' : ''),
-            ...rows.filter(Boolean)
-          );
-          if (!view.querySelector('.row')) view.append(h('div.empty', h('p.muted', 'Nothing here yet.')));
-        },
-
-        library: async (view, { id }, alive) => {
-          const sec = this.sections.find(s => s.key === id);
-          const f = { sort: 'addedAt:desc', genre: '', unwatched: false, ...(this.settings.libraryFilters?.[id] || {}) };
-          const save = () => this.saveSettings({ libraryFilters: { ...(this.settings.libraryFilters || {}), [id]: f } });
-          const grid = h('div.grid');
-          const count = h('span.muted');
-          const genreSel = h('select', { onchange: () => { f.genre = genreSel.value; save(); reload(); } }, h('option', { value: '' }, 'All genres'));
-          const sortSel = h('select', { onchange: () => { f.sort = sortSel.value; save(); reload(); } }, SORTS.map(([v, l]) => h('option', { value: v, selected: v === f.sort }, l)));
-          const unw = h('input', { type: 'checkbox', checked: f.unwatched, onchange: () => { f.unwatched = unw.checked; save(); reload(); } });
-          view.append(
-            h('div.lib-head', h('h1', sec.title), count),
-            h('div.filters', sortSel, genreSel, h('label.check', unw, sec.type === 'show' ? 'Unwatched episodes only' : 'Unwatched only')),
-            grid
-          );
-          this.plex.genres(id).then(gs => {
-            if (!alive()) return;
-            genreSel.append(...gs.map(g => h('option', { value: g.key, selected: String(g.key) === String(f.genre) }, g.title)));
-          }).catch(() => {});
-
-          let start = 0, total = Infinity, busy = false, gen = 0;
-          const sentinel = h('div.sentinel');
-          const more = async () => {
-            if (busy || start >= total) return;
-            busy = true;
-            const myGen = gen;
-            try {
-              const r = await this.plex.sectionItems(id, { sort: f.sort, genre: f.genre || undefined, unwatched: f.unwatched, start, size: 60 });
-              if (!alive() || myGen !== gen) return;
-              total = r.total;
-              start += r.items.length;
-              if (!r.items.length) total = start;
-              count.textContent = `${total} ${sec.type === 'show' ? 'series' : 'movies'}`;
-              grid.append(...r.items.map(i => this.posterCard(i)));
-              if (!grid.children.length) grid.append(h('div.empty', h('p.muted', 'No matches.')));
-            } finally { busy = false; }
-            if (sentinel.getBoundingClientRect().top < window.innerHeight * 2) more();
-          };
-          const reload = () => { gen++; start = 0; total = Infinity; busy = false; grid.replaceChildren(); more(); };
-          view.append(sentinel);
-          new IntersectionObserver((es) => { if (es[0].isIntersecting) more(); }, { root: this.main, rootMargin: '800px' }).observe(sentinel);
-          await more();
-        },
-
-        search: async (view, { q }, alive) => {
-          view.append(h('div.loading', `Searching “${q}”…`));
-          const r = await this.plex.search(q);
-          if (!alive()) return;
-          const rows = [
-            r.movie.length ? h('section', h('h2.row-title', 'Movies'), h('div.grid', r.movie.map(i => this.posterCard(i)))) : null,
-            r.show.length ? h('section', h('h2.row-title', 'Series'), h('div.grid', r.show.map(i => this.posterCard(i)))) : null,
-            r.episode.length ? h('section', h('h2.row-title', 'Episodes'), h('div.grid.wide', r.episode.map(i => this.wideCard(i)))) : null
-          ].filter(Boolean);
-          view.replaceChildren(h('h1', `Results for “${q}”`), ...(rows.length ? rows : [h('div.empty', h('p.muted', 'No results.'))]));
-        },
-
-        movie: async (view, { key }, alive) => {
-          const m = await this.plex.metadata(key);
-          if (!alive()) return;
-          view.append(this.hero(m, [
-            this.playButtons(m),
-            h('button.btn', { onclick: () => this.toggleWatched(m) }, m.viewCount ? 'Mark unwatched' : 'Mark watched')
-          ]), this.techInfo(m));
-        },
-
-        show: async (view, { key, season, focus }, alive) => {
-          const [show, seasons, leaves] = await Promise.all([this.plex.metadata(key), this.plex.children(key), this.plex.allLeaves(key)]);
-          if (!alive()) return;
-          const upNext = leaves.find(e => e.viewOffset && !e.viewCount) || leaves.find(e => !e.viewCount) || leaves[0];
-          const allWatched = leaves.length && leaves.every(e => e.viewCount);
-          const actions = [];
-          if (upNext) {
-            actions.push(h('button.btn.primary.lg', { onclick: () => this.play(upNext) },
-              `▶ ${upNext.viewOffset && !upNext.viewCount ? 'Resume' : 'Play'} ${epCode(upNext)}`));
-          }
-          actions.push(h('button.btn', { onclick: () => this.toggleWatched(show, allWatched) }, allWatched ? 'Mark series unwatched' : 'Mark series watched'));
-          const meta = { ...show, viewCount: 0 };
-          view.append(this.hero(meta, actions));
-
-          const curSeason = season || upNext?.parentRatingKey || seasons[0]?.ratingKey;
-          const tabs = h('div.tabs');
-          const list = h('div.episodes');
-          const showSeason = (sk) => {
-            for (const t of tabs.children) t.classList.toggle('active', t.dataset.key === String(sk));
-            const s = seasons.find(x => x.ratingKey === String(sk));
-            const eps = leaves.filter(e => e.parentRatingKey === String(sk));
-            const seasonWatched = eps.length && eps.every(e => e.viewCount);
-            list.replaceChildren(
-              h('div.season-bar',
-                h('span.muted', `${eps.length} episodes`),
-                s ? h('button.btn.sm', { onclick: () => this.toggleWatched(s, seasonWatched) }, seasonWatched ? 'Mark season unwatched' : 'Mark season watched') : null),
-              ...eps.map(e => this.episodeRow(e, e.ratingKey === focus))
-            );
-            this.current.args.season = sk;
-            const f = list.querySelector('.focus');
-            if (f) requestAnimationFrame(() => f.scrollIntoView({ block: 'center' }));
-          };
-          tabs.append(...seasons.map(s => {
-            const done = s.leafCount && s.viewedLeafCount >= s.leafCount;
-            return h('button.tab', { 'data-key': s.ratingKey, onclick: () => showSeason(s.ratingKey) }, s.title, done ? h('span.tick', ' ✓') : null);
-          }));
-          view.append(tabs, list);
-          if (curSeason) showSeason(curSeason);
-        },
-
-        settings: async (view) => this.settingsView(view)
-      };
+    // ---------- playback ----------
+    // A series or season resolves to its next episode.
+    async resolvePlayable(item) {
+      if (item.type !== 'show' && item.type !== 'season') return item;
+      const leaves = await this.plex.allLeaves(item.type === 'show' ? item.ratingKey : item.parentRatingKey).catch(() => []);
+      const eps = item.type === 'season' ? leaves.filter(e => e.parentRatingKey === item.ratingKey) : leaves;
+      return eps.find(e => e.viewOffset && !e.viewCount) || eps.find(e => !e.viewCount) || eps[0] || null;
     }
 
-    hero(m, actions) {
-      const p = this.plex;
-      const facts = [
-        m.year, m.duration && fmtDuration(m.duration), m.contentRating,
-        m.audienceRating ? `★ ${m.audienceRating.toFixed(1)}` : m.rating ? `★ ${Number(m.rating).toFixed(1)}` : null,
-        m.childCount ? `${m.childCount} season${m.childCount === 1 ? '' : 's'}` : null
-      ].filter(Boolean);
-      const genres = (m.Genre || []).map(g => g.tag).join(', ');
-      const directors = (m.Director || []).map(g => g.tag).join(', ');
-      const cast = (m.Role || []).slice(0, 8).map(r => r.tag).join(', ');
-      return h('div.hero',
-        m.art ? h('div.hero-bg', { style: { backgroundImage: `url("${p.image(m.art, 1600, 900)}")` } }) : null,
-        h('div.hero-body',
-          m.thumb ? h('img.hero-poster', { src: p.image(m.thumb, 300, 450) }) : null,
-          h('div.hero-info',
-            h('h1', m.title),
-            h('div.facts', facts.join('  ·  ')),
-            genres ? h('div.muted', genres) : null,
-            h('div.actions', actions),
-            m.summary ? h('p.summary', m.summary) : null,
-            directors ? h('div.credit', h('b', 'Director: '), directors) : null,
-            cast ? h('div.credit', h('b', 'Cast: '), cast) : null
-          )
-        )
-      );
-    }
-
-    playButtons(m) {
-      if (m.viewOffset) {
-        return h('span.btn-group',
-          h('button.btn.primary.lg', { onclick: () => this.play(m) }, `▶ Resume from ${fmtTime(m.viewOffset / 1000)}`),
-          h('button.btn.lg', { onclick: () => this.play(m, { resume: false }) }, 'Play from start'));
-      }
-      return h('button.btn.primary.lg', { onclick: () => this.play(m) }, '▶ Play');
-    }
-
-    techInfo(m) {
-      const media = m.Media?.[0];
-      if (!media) return null;
-      const streams = media.Part?.[0]?.Stream || [];
-      const audio = streams.filter(s => s.streamType === 2).map(s => s.displayTitle).join(' · ');
-      const subs = streams.filter(s => s.streamType === 3).map(s => s.displayTitle).join(' · ');
-      return h('div.tech',
-        h('div', h('b', 'Video: '), [media.videoResolution && `${media.videoResolution}${/^\d+$/.test(media.videoResolution) ? 'p' : ''}`, media.videoCodec, media.container, media.bitrate && `${(media.bitrate / 1000).toFixed(1)} Mbps`].filter(Boolean).join(' · ')),
-        audio ? h('div', h('b', 'Audio: '), audio) : null,
-        subs ? h('div', h('b', 'Subtitles: '), subs) : null
-      );
-    }
-
-    episodeRow(e, focus) {
-      const p = this.plex;
-      const prog = this.progressOf(e);
-      const watched = e.viewCount > 0;
-      return h('div.ep' + (focus ? '.focus' : ''),
-        h('div.ep-img', { onclick: () => this.play(e) },
-          e.thumb ? h('img', { src: p.image(e.thumb, 320, 180), loading: 'lazy' }) : h('div.noimg'),
-          h('div.play-ov', '▶'),
-          prog ? h('div.prog', h('div', { style: { width: `${prog * 100}%` } })) : null),
-        h('div.ep-body',
-          h('div.ep-title', h('span.ep-code', epCode(e)), e.title),
-          h('div.muted.small', [e.duration && fmtDuration(e.duration), e.originallyAvailableAt, prog ? `${fmtTime(e.viewOffset / 1000)} watched` : null].filter(Boolean).join(' · ')),
-          e.summary ? h('p.ep-sum', e.summary) : null
-        ),
-        h('div.ep-actions',
-          e.viewOffset && !watched ? h('button.btn.sm', { onclick: () => this.play(e, { resume: false }) }, 'From start') : null,
-          h('button.watch' + (watched ? '.on' : ''), { title: watched ? 'Mark unwatched' : 'Mark watched', onclick: () => this.toggleWatched(e) }, watched ? '✓' : '○')
-        )
-      );
-    }
-
-    async toggleWatched(item, isWatched = item.viewCount > 0) {
-      try {
-        if (isWatched) await this.plex.unscrobble(item.ratingKey); else await this.plex.scrobble(item.ratingKey);
-        toast(isWatched ? 'Marked unwatched' : 'Marked watched');
-        this.render(this.main.scrollTop);
-      } catch (e) { toast('Failed: ' + e.message); }
-    }
-
-    // ---------- settings ----------
-    settingsView(view) {
-      const s = this.settings;
-      const set = (patch) => { this.saveSettings(patch); preview.applyStyle(this.settings); };
-      const select = (key, options, onchange) => h('select', { onchange: (e) => { set({ [key]: e.target.value }); onchange?.(); } },
-        options.map(([v, l]) => h('option', { value: v, selected: String(s[key]) === String(v) }, l)));
-      const check = (key, label) => h('label.check', h('input', { type: 'checkbox', checked: !!s[key], onchange: (e) => set({ [key]: e.target.checked }) }), label);
-      const field = (label, control, hint) => h('div.field', h('div.f-label', label, hint ? h('div.muted.small', hint) : null), control);
-
-      const previewEl = h('div.subs.preview-subs');
-      const preview = new Sofa.Subtitles.SubtitleOverlay(previewEl, () => 1);
-      preview.applyStyle(s);
-      preview.setCues([{ start: 0, end: 5, html: 'This is how your subtitles look.<br><i>Second line in italics.</i>' }]);
-
-      const libs = this.sections.map(sec => h('label.check', h('input', {
-        type: 'checkbox', checked: !s.hiddenLibraries.includes(sec.key),
-        onchange: (e) => {
-          const hidden = new Set(this.settings.hiddenLibraries);
-          if (e.target.checked) hidden.delete(sec.key); else hidden.add(sec.key);
-          set({ hiddenLibraries: [...hidden] });
-          this.buildNav();
-        }
-      }), sec.title));
-
-      const seriesCount = Object.keys(s.seriesPrefs || {}).length;
-      const langs = LANGUAGES;
-
-      view.append(
-        h('h1', 'Settings'),
-        h('section.settings',
-          h('h2', 'Playback'),
-          field('Default quality', select('quality', QUALITY.map(q => [q.id, q.label])), 'Direct Play sends the original file. If the file cannot play, the app switches to a converted stream.'),
-          check('autoPlayNext', 'Play the next episode automatically'),
-          field('Countdown before next episode', select('nextCountdown', [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds']])),
-          check('autoSkipIntro', 'Skip intros automatically'),
-          check('autoSkipCredits', 'Skip credits automatically (goes to the next episode)')
-        ),
-        h('section.settings',
-          h('h2', 'Languages'),
-          field('Preferred audio language', select('audioLang', langs)),
-          field('Subtitle language', select('subtitleLang', langs)),
-          field('Show subtitles', select('subtitleMode', [['auto', 'When audio is in another language'], ['always', 'Always'], ['off', 'Never']]), 'For each series, the app remembers the audio and subtitles you select in the player.'),
-          seriesCount ? h('div.field', h('div.f-label', `${seriesCount} series with remembered tracks`), h('button.btn.sm', { onclick: (e) => { set({ seriesPrefs: {} }); e.target.disabled = true; toast('Cleared'); } }, 'Forget all')) : null
-        ),
-        h('section.settings',
-          h('h2', 'Subtitle style'),
-          h('div.preview', previewEl),
-          field('Size', h('input', { type: 'range', min: 60, max: 200, step: 10, value: s.subtitleSize, oninput: (e) => set({ subtitleSize: +e.target.value }) })),
-          field('Color', select('subtitleColor', [['#ffffff', 'White'], ['#fff35c', 'Yellow'], ['#9fe8ff', 'Light blue'], ['#c8ffc8', 'Light green']])),
-          field('Background', select('subtitleBackground', [['shadow', 'Outline and shadow'], ['box', 'Dark box'], ['none', 'None']])),
-          field('Distance from bottom', h('input', { type: 'range', min: 2, max: 30, step: 1, value: s.subtitlePosition, oninput: (e) => set({ subtitlePosition: +e.target.value }) }))
-        ),
-        h('section.settings',
-          h('h2', 'Libraries'),
-          h('p.muted.small', 'Hidden libraries do not show on the home screen or in the top bar.'),
-          h('div.libs', libs)
-        ),
-        h('section.settings',
-          h('h2', 'Account'),
-          h('div.field', h('div.f-label', 'Signed in as', h('div.muted.small', this.user?.username || this.user?.email || '')),
-            h('button.btn.sm', { onclick: async () => { await sofa.setToken(null); this.saveSettings({ serverId: null }); this.plex.token = null; this.showLogin(); } }, 'Sign out')),
-          h('div.field', h('div.f-label', 'Server', h('div.muted.small', `${this.plex.server.name} · ${this.plex.server.relay ? 'Plex relay' : this.plex.server.local ? 'local network' : 'direct internet'}`)),
-            h('button.btn.sm', { onclick: () => this.chooseServer(true) }, 'Switch server'))
-        )
-      );
+    async play(item, { resume = true, ...opts } = {}) {
+      item = await this.resolvePlayable(item);
+      if (!item) return toast('Nothing to play.');
+      const startAt = resume && item.viewOffset ? item.viewOffset / 1000 : 0;
+      this.player.play(item, { startAt, ...opts });
     }
   }
 
+  S.App = App;
   window.addEventListener('DOMContentLoaded', () => {
     const app = new App();
     window.app = app;

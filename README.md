@@ -10,9 +10,14 @@ First start: click **Sign in with Plex**. Your browser opens plex.tv. Sign in th
 
 ## Features
 
-- Home shows only the server you choose: Continue Watching and Recently Added per library.
-- Library pages: sort, genre filter and "unwatched only". The app remembers the filter per library.
-- Instant search (Ctrl+F) for movies, series and episodes.
+- Icon rail navigation: Home, Search, Movies, Series, Kids, Watchlist, Multi-view, pinned items and Settings.
+- Home shows only the server you choose: Continue Watching and Next Up on the left, Recently Added on the right. Tabs filter by library. ↑/↓ and Space play from the list.
+- Library pages: sort, genre filter, "unwatched only", grid or list view, collections and an A–Z letter rail. The app remembers the filter per library.
+- Search palette (Ctrl+F or /) for movies, series and episodes. Enter opens, Ctrl+Enter plays.
+- Watchlist from your Plex account, matched to titles on the server. Add or remove titles from detail pages.
+- Pin series, movies or collections to the sidebar.
+- Multi-view: up to four streams at once. Click a tile to move the audio to it.
+- Plex Home profiles ("Who's watching?") with parental controls per managed profile: rating limit, unrated titles, libraries, PIN to leave and Multi-view.
 - Quality: Direct Play (original file) or a fixed bitrate. If a file cannot play directly, the app switches to a converted stream.
 - Audio and subtitle selection in the player. The app remembers your choice per series.
 - Subtitle style: size, color, background and position (Settings).
@@ -32,6 +37,11 @@ First start: click **Sign in with Plex**. Your browser opens plex.tv. Sign in th
 | S | Skip intro / credits |
 | N | Next episode |
 | Esc | Leave fullscreen, then leave the player |
+
+## Development
+
+- Icons are Lucide SVGs, built into `renderer/js/icons.js` by `node scripts/build-icons.js`. Add a name to the list in that script to use a new icon.
+- Colors and sizes are CSS variables at the top of `renderer/styles.css`.
 
 ## Files
 
