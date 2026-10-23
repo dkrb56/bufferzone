@@ -16,7 +16,6 @@
     ['lastViewedAt:desc', 'Recently watched'],
     ['originallyAvailableAt:desc', 'Release date']
   ];
-  const DAY = 86400;
 
   // ---------- shared pieces ----------
   P.progressOf = function (item) {
@@ -40,7 +39,7 @@
     const unwatchedEps = item.type === 'show' ? (item.leafCount || 0) - (item.viewedLeafCount || 0) : 0;
     const prog = this.progressOf(item);
     const title = item.type === 'episode' ? item.grandparentTitle : item.type === 'season' ? item.parentTitle : item.title;
-    const sub = item.newCount > 1 ? `${item.newCount} new episodes` : item.type === 'episode' ? `${epCode(item)} · ${item.title}` : item.type === 'season' ? item.title : item.type === 'collection' ? `${item.childCount || ''} titles` : item.year || '';
+    const sub = item.type === 'episode' ? `${epCode(item)} · ${item.title}` : item.type === 'season' ? item.title : item.type === 'collection' ? `${item.childCount || ''} titles` : item.year || '';
     return h('div.card.poster', { onclick: () => this.open(item), title },
       this.art(thumb, 300, 450, title, [
         watched ? h('span.badge.ok', icon('check', { size: 12, stroke: 3 })) : unwatchedEps > 0 && item.viewedLeafCount ? h('span.badge', String(unwatchedEps)) : null,
@@ -85,10 +84,11 @@
         h('div.spacer'), this.searchField()),
       h('div.home-body', left, right)));
 
-    const [cw, deck, ...recent] = await Promise.all([
+    right.append(h('div.sec-head', h('h2', 'Watchlist')), h('div.loading', 'Loading watchlist…'));
+    const wlPromise = this.watchlistRows().catch(() => []);
+    const [cw, deck] = await Promise.all([
       this.plex.continueWatching().catch(() => []),
-      this.plex.onDeck().catch(() => []),
-      ...tab.secs.map(s => this.plex.recentlyAdded(s.key, 30).catch(() => []))
+      this.plex.onDeck().catch(() => [])
     ]);
     if (!alive()) return;
 
@@ -128,23 +128,23 @@
       else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); this.play(rowsEls[sel].item); }
     };
 
-    // Right: recently added, newest first, last 14 days when there is enough
-    let all = this.allow(recent.flat()).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
-    // One card per series: new episodes of the same series collapse into the newest one.
-    const seen = new Map();
-    all = all.filter(i => {
-      const k = i.type === 'episode' ? 'show:' + i.grandparentRatingKey : i.type === 'season' ? 'show:' + i.parentRatingKey : i.guid || i.ratingKey;
-      if (seen.has(k)) { seen.get(k).newCount = (seen.get(k).newCount || 1) + 1; return false; }
-      seen.set(k, i);
-      return true;
-    });
-    const cutoff = Date.now() / 1000 - 14 * DAY;
-    const fresh = all.filter(i => i.addedAt >= cutoff);
-    const list = (fresh.length >= 12 ? fresh : all).slice(0, 36);
-    const scope = tab.id === 'all' ? 'All libraries' : tab.label;
-    right.replaceChildren(
-      h('div.sec-head', h('h2', 'Recently added'), h('span.muted', `${scope} · ${fresh.length >= 12 ? 'last 14 days' : 'newest first'}`)),
-      list.length ? h('div.grid', list.map(i => this.posterCard(i))) : h('p.muted', 'Nothing here yet.'));
+    // Right: watchlist, newest first. Folder chips filter it; the library tabs filter it too.
+    const wl = await wlPromise;
+    if (!alive()) return;
+    const inScope = wl.filter(r => this.watchGuids.has(r.w.guid) && (r.s ? inTab(r.s) : tab.id === 'all'));
+    const drawWl = () => {
+      let folder = this.settings.homeWlFolder || 'all';
+      if (folder !== 'all' && folder !== 'none' && !this.wlFolders().some(x => x.id === folder)) folder = 'all';
+      const list = inScope.filter(r => this.inFolder(folder, r.w.guid));
+      right.replaceChildren(...[
+        h('div.sec-head', h('h2', 'Watchlist'), h('span.muted', `${list.length} titles`), h('div.spacer'),
+          btn('Open watchlist', { kind: 'ghost', size: 'sm', onclick: () => this.go('watchlist', {}, { root: true }) })),
+        this.wlFolders().length ? h('div.folder-bar', this.folderChips(folder, inScope, (k) => { this.saveSettings({ homeWlFolder: k }); drawWl(); }, { drop: false, small: true })) : null,
+        list.length ? h('div.grid', list.map(r => this.wlCard(r)))
+          : h('p.muted', wl.length ? 'Nothing in this view.' : 'Your watchlist is empty. Add titles with the bookmark button on a movie or series.')
+      ].filter(Boolean));
+    };
+    drawWl();
   };
 
   // ---------- library ----------
@@ -387,20 +387,24 @@
   };
 
   // ---------- watchlist ----------
+  // Matches watchlist items to server items and reads their watchlist dates.
+  // Both are cached by guid, because a reload of the watchlist gives new item objects.
   async function matchAll(app, items) {
     app.wlMatch = app.wlMatch || new Map();
+    app.wlAdded = app.wlAdded || new Map();
     const todo = items.filter(w => !app.wlMatch.has(w.guid));
     let i = 0;
     const worker = async () => {
       while (i < todo.length) {
         const w = todo[i++];
-        if (!w.watchlistedAt) w.watchlistedAt = (await app.plex.watchlistState(w.ratingKey).catch(() => ({}))).watchlistedAt;
+        if (!app.wlAdded.has(w.guid)) app.wlAdded.set(w.guid, (await app.plex.watchlistState(w.ratingKey).catch(() => ({}))).watchlistedAt || 0);
         const found = await app.plex.findByGuid(w.guid).catch(() => []);
         const visible = found.filter(x => !app.settings.hiddenLibraries.includes(String(x.librarySectionID)));
         app.wlMatch.set(w.guid, visible[0] || found[0] || null);
       }
     };
     await Promise.all([1, 2, 3, 4, 5, 6].map(worker));
+    for (const w of items) w.watchlistedAt = app.wlAdded.get(w.guid) || w.watchlistedAt;
   }
 
   function wlStatus(s) {
@@ -415,49 +419,166 @@
     return pill('Unwatched', '', { sm: true });
   }
 
+  // ---------- watchlist folders ----------
+  // Plex has no watchlist folders, so they live in settings on this computer: [{ id, name, guids: [] }].
+  P.wlFolders = function () { return this.settings.watchlistFolders || []; };
+  P.saveFolders = function (list) { this.saveSettings({ watchlistFolders: list }); };
+  P.newFolder = async function () {
+    const name = await S.askText('New folder', 'Watchlist titles can be in more than one folder.', '', 'Create');
+    if (!name) return null;
+    const folder = { id: 'f' + Date.now().toString(36), name, guids: [] };
+    this.saveFolders([...this.wlFolders(), folder]);
+    return folder;
+  };
+  P.setInFolder = function (folderId, guid, on) {
+    this.saveFolders(this.wlFolders().map(f => (f.id !== folderId ? f
+      : { ...f, guids: on ? [...new Set([...f.guids, guid])] : f.guids.filter(g => g !== guid) })));
+  };
+  P.inFolder = function (folderKey, guid) {
+    if (folderKey === 'all') return true;
+    if (folderKey === 'none') return !this.wlFolders().some(f => f.guids.includes(guid));
+    return !!this.wlFolders().find(f => f.id === folderKey)?.guids.includes(guid);
+  };
+
+  // Matched watchlist rows [{ w, s }], newest first. `s` is the server item, or null when the server does not have it.
+  P.watchlistRows = async function () {
+    const items = this.watchlist || await this.loadWatchlist();
+    await matchAll(this, items);
+    return items.map(w => ({ w, s: this.wlMatch.get(w.guid) }))
+      .filter(r => !r.s || this.itemAllowed(r.s))
+      .sort((a, b) => (b.w.watchlistedAt || 0) - (a.w.watchlistedAt || 0));
+  };
+
+  // Folder chips. Titles can be dragged onto a folder chip.
+  P.folderChips = function (current, rows, onSelect, { drop = true, small = false } = {}) {
+    const count = (key) => rows.filter(r => this.inFolder(key, r.w.guid)).length;
+    const chip = (key, label) => {
+      const el = h('button.tab' + (key === current ? '.active' : ''), { onclick: () => onSelect(key) }, label, h('span.n', String(count(key))));
+      if (drop && key !== 'all' && key !== 'none') {
+        el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drop'); });
+        el.addEventListener('dragleave', () => el.classList.remove('drop'));
+        el.addEventListener('drop', (e) => {
+          e.preventDefault();
+          el.classList.remove('drop');
+          const guid = e.dataTransfer.getData('text/plain');
+          if (!guid) return;
+          this.setInFolder(key, guid, true);
+          toast(`Added to ${label}`);
+          onSelect(current);
+        });
+      }
+      return el;
+    };
+    const folders = this.wlFolders();
+    return h('div.tabs' + (small ? '.sm' : ''),
+      chip('all', 'All'),
+      folders.map(f => chip(f.id, f.name)),
+      folders.length ? chip('none', 'No folder') : null);
+  };
+
+  // Folder menu for one title: a check per folder, plus "New folder".
+  P.folderMenu = function (anchor, guid, onChange) {
+    document.querySelector('.menu-pop')?.remove();
+    const r = anchor.getBoundingClientRect();
+    const close = () => { pop.remove(); document.removeEventListener('mousedown', outside, true); };
+    const outside = (e) => { if (!pop.contains(e.target)) close(); };
+    const items = this.wlFolders().map(f => {
+      const on = f.guids.includes(guid);
+      return h('button.t-item' + (on ? '.active' : ''), { onclick: () => { this.setInFolder(f.id, guid, !on); close(); onChange(); } },
+        h('span.t-check', on ? icon('check', { size: 14, stroke: 2.5 }) : null), h('span', h('b', f.name)));
+    });
+    const pop = h('div.menu-pop', h('div.eyebrow', { style: { padding: '6px 10px' } }, 'Folders'),
+      items.length ? items : h('div.muted.small', { style: { padding: '4px 10px 8px' } }, 'No folders yet.'),
+      h('button.t-item', { onclick: async () => {
+        close();
+        const f = await this.newFolder();
+        if (f) { this.setInFolder(f.id, guid, true); toast(`Added to ${f.name}`); onChange(); }
+      } }, h('span.t-check', icon('plus', { size: 14 })), h('span', h('b', 'New folder…'))));
+    document.body.append(pop);
+    const w = pop.offsetWidth, ht = pop.offsetHeight;
+    pop.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+    pop.style.top = `${r.bottom + ht + 8 > window.innerHeight ? r.top - ht - 6 : r.bottom + 6}px`;
+    setTimeout(() => document.addEventListener('mousedown', outside, true));
+  };
+
+  // Poster card for a watchlist row; titles the server does not have are dimmed.
+  P.wlCard = function ({ w, s }) {
+    if (s) return this.posterCard(s);
+    const card = h('div.card.poster.off', { title: w.title, onclick: () => toast('This title is not on this server.') },
+      h('div.art', w.thumb ? h('img', { src: w.thumb, loading: 'lazy', alt: '' }) : h('div.noimg', w.title)),
+      h('div.c-title', w.title), h('div.c-sub', 'Not on server'));
+    return card;
+  };
+
   S.views.watchlist = async function (view, _args, alive) {
-    const f = { type: 'all', sort: 'added', ...(this.settings.watchlistView || {}) };
+    const f = { type: 'all', sort: 'added', folder: 'all', ...(this.settings.watchlistView || {}) };
     const save = () => this.saveSettings({ watchlistView: f });
     const count = h('span.muted');
     const body = h('div', h('div.loading', `Matching titles on ${this.plex.server.name}…`));
     view.append(h('div.page-head', h('h1', 'Watchlist'), count, h('div.spacer'), this.searchField()), h('div.pad', body));
-    const items = this.watchlist || await this.loadWatchlist();
-    await matchAll(this, items);
+    const all = await this.watchlistRows();
     if (!alive()) return;
+    if (f.folder !== 'all' && f.folder !== 'none' && !this.wlFolders().some(x => x.id === f.folder)) f.folder = 'all';
 
     const draw = () => {
-      let rows = items.map(w => ({ w, s: this.wlMatch.get(w.guid) })).filter(r => !r.s || this.itemAllowed(r.s));
+      const items = all.filter(r => this.watchGuids.has(r.w.guid));
+      let rows = items.filter(r => this.inFolder(f.folder, r.w.guid));
       if (f.type !== 'all') rows = rows.filter(r => r.w.type === f.type);
       if (f.sort === 'added') rows.sort((a, b) => (b.w.watchlistedAt || 0) - (a.w.watchlistedAt || 0));
       if (f.sort === 'title') rows.sort((a, b) => a.w.title.localeCompare(b.w.title));
       if (f.sort === 'length') rows.sort((a, b) => ((b.s?.duration || b.w.duration || 0) - (a.s?.duration || a.w.duration || 0)));
-      count.textContent = `${rows.length} titles`;
+      count.textContent = `${items.length} titles`;
       const added = (w) => w.watchlistedAt ? new Date(w.watchlistedAt * 1000).toISOString().slice(0, 10) : '';
+      const folder = this.wlFolders().find(x => x.id === f.folder);
+      const folderNames = (guid) => this.wlFolders().filter(x => x.guids.includes(guid)).map(x => x.name).join(', ');
+      const row = ({ w, s }) => {
+        const el = h('div.t-row', { draggable: true, title: 'Drag onto a folder to add it' },
+          h('div.t-title', { onclick: () => (s ? this.open(s) : toast('This title is not on this server.')) },
+            h('div.art', s?.thumb ? h('img', { src: this.plex.image(s.thumb, 128, 192), loading: 'lazy', alt: '' }) : w.thumb ? h('img', { src: w.thumb, loading: 'lazy', alt: '' }) : null),
+            h('div', { style: { minWidth: 0 } },
+              h('b', w.title),
+              h('span.muted.small', [w.year, s?.type === 'show' && s.childCount ? `${s.childCount} season${s.childCount === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')),
+              folderNames(w.guid) ? h('span.t-folders', icon('folder', { size: 12 }), folderNames(w.guid)) : null)),
+          h('div.muted', s?.librarySectionTitle || '—'),
+          h('div.muted.tnum', added(w)),
+          h('div', wlStatus(s)),
+          h('div.muted', s ? (s.type === 'show' ? `${s.leafCount || 0} eps` : s.duration ? fmtDuration(s.duration) : '') : ''),
+          h('div.t-actions',
+            iconBtn('folder', { title: 'Folders', size: 20, onclick: (e) => this.folderMenu(e.currentTarget, w.guid, draw) }),
+            s ? iconBtn('play', { title: 'Play', size: 20, onclick: () => this.play(s) }) : h('span', { style: { width: '38px' } }),
+            iconBtn('x', { title: 'Remove from watchlist', size: 20, onclick: async () => {
+              try {
+                await this.plex.removeFromWatchlist(w.guid);
+                this.watchGuids.delete(w.guid);
+                for (const x of this.wlFolders()) if (x.guids.includes(w.guid)) this.setInFolder(x.id, w.guid, false);
+                toast('Removed from watchlist');
+                draw();
+              } catch (e) { toast('Failed: ' + e.message); }
+            } })));
+        el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', w.guid); el.classList.add('dragging'); });
+        el.addEventListener('dragend', () => el.classList.remove('dragging'));
+        return el;
+      };
       body.replaceChildren(
+        h('div.folder-bar',
+          this.folderChips(f.folder, items, (k) => { f.folder = k; save(); draw(); }),
+          btn('New folder', { kind: 'ghost', size: 'sm', icon: 'plus', onclick: async () => { const nf = await this.newFolder(); if (nf) { f.folder = nf.id; save(); draw(); } } }),
+          h('div.spacer'),
+          folder ? btn('Rename', { kind: 'ghost', size: 'sm', onclick: async () => {
+            const name = await S.askText('Rename folder', null, folder.name);
+            if (name) { this.saveFolders(this.wlFolders().map(x => (x.id === folder.id ? { ...x, name } : x))); draw(); }
+          } }) : null,
+          folder ? btn('Delete folder', { kind: 'ghost', size: 'sm', onclick: async () => {
+            if (!await S.askConfirm(`Delete "${folder.name}"?`, 'The titles stay on your watchlist. Only the folder goes away.')) return;
+            this.saveFolders(this.wlFolders().filter(x => x.id !== folder.id));
+            f.folder = 'all'; save(); draw();
+          } }) : null),
         h('div.wl-tools',
           h('div.tabs', [['all', 'All'], ['movie', 'Movies'], ['show', 'Series']].map(([k, l]) => h('button.tab' + (f.type === k ? '.active' : ''), { onclick: () => { f.type = k; save(); draw(); } }, l))),
           h('div', { style: { width: '170px' } }, selectEl([['added', 'Date added'], ['title', 'Title A–Z'], ['length', 'Length']], f.sort, (v) => { f.sort = v; save(); draw(); }))),
         h('div.table',
           h('div.t-row.head', h('div', 'Title'), h('div', 'Library'), h('div', 'Added'), h('div', 'Status'), h('div', 'Length'), h('div')),
-          rows.length ? rows.map(({ w, s }) => h('div.t-row',
-            h('div.t-title', { onclick: () => (s ? this.open(s) : toast('This title is not on this server.')) },
-              h('div.art', s?.thumb ? h('img', { src: this.plex.image(s.thumb, 72, 108), loading: 'lazy', alt: '' }) : w.thumb ? h('img', { src: w.thumb, loading: 'lazy', alt: '' }) : null),
-              h('div', { style: { minWidth: 0 } }, h('b', w.title), h('span.muted.small', [w.year, s?.type === 'show' && s.childCount ? `${s.childCount} season${s.childCount === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ')))),
-            h('div.muted', s?.librarySectionTitle || '—'),
-            h('div.muted.tnum', added(w)),
-            h('div', wlStatus(s)),
-            h('div.muted', s ? (s.type === 'show' ? `${s.leafCount || 0} eps` : s.duration ? fmtDuration(s.duration) : '') : ''),
-            h('div.t-actions',
-              s ? iconBtn('play', { title: 'Play', size: 16, onclick: () => this.play(s) }) : null,
-              iconBtn('x', { title: 'Remove from watchlist', size: 16, onclick: async () => {
-                try {
-                  await this.plex.removeFromWatchlist(w.guid);
-                  this.watchGuids.delete(w.guid);
-                  items.splice(items.indexOf(w), 1);
-                  toast('Removed from watchlist');
-                  draw();
-                } catch (e) { toast('Failed: ' + e.message); }
-              } })))) : h('div.empty', 'Your watchlist is empty.')));
+          rows.length ? rows.map(row) : h('div.empty', folder ? 'This folder is empty. Drag titles onto its name, or use the folder button on a title.' : 'Nothing here.')));
     };
     draw();
   };

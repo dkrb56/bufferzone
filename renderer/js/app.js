@@ -276,16 +276,21 @@
     }
 
     // ---------- watchlist & pins ----------
-    async loadWatchlist() {
-      try {
-        this.watchlist = await this.plex.watchlist();
-        this.watchGuids = new Set(this.watchlist.map(w => w.guid));
-      } catch (e) {
-        sofa.log('watchlist failed', String(e));
-        this.watchlist = [];
-        this.watchGuids = new Set();
-      }
-      return this.watchlist;
+    // Callers at the same time share one request, so they all get the same item objects.
+    loadWatchlist() {
+      if (this.wlLoading) return this.wlLoading;
+      this.wlLoading = (async () => {
+        try {
+          this.watchlist = await this.plex.watchlist();
+          this.watchGuids = new Set(this.watchlist.map(w => w.guid));
+        } catch (e) {
+          sofa.log('watchlist failed', String(e));
+          this.watchlist = [];
+          this.watchGuids = new Set();
+        }
+        return this.watchlist;
+      })().finally(() => { this.wlLoading = null; });
+      return this.wlLoading;
     }
     inWatchlist(item) { return !!(item?.guid && this.watchGuids?.has(item.guid)); }
     async toggleWatchlist(item) {

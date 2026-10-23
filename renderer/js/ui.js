@@ -122,6 +122,33 @@
     });
   }
 
+  // Text prompt. Resolves with the trimmed text, or null when cancelled or empty.
+  function askText(title, text, value = '', okLabel = 'Save') {
+    return new Promise((resolve) => {
+      const input = h('input.text', { type: 'text', value, maxLength: 60, spellcheck: false });
+      const close = (v) => { bg.remove(); resolve(v); };
+      const submit = () => close(input.value.trim() || null);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') close(null); });
+      const bg = h('div.modal-bg', { onmousedown: (e) => { if (e.target === bg) close(null); } }, h('div.modal',
+        h('h2', title), text ? h('p.muted', text) : null, input,
+        h('div.btn-row', { style: { justifyContent: 'flex-end' } }, btn('Cancel', { kind: 'ghost', onclick: () => close(null) }), btn(okLabel, { kind: 'primary', onclick: submit }))));
+      document.body.append(bg);
+      input.focus();
+      input.select();
+    });
+  }
+  function askConfirm(title, text, okLabel = 'Delete') {
+    return new Promise((resolve) => {
+      const close = (v) => { bg.remove(); document.removeEventListener('keydown', key); resolve(v); };
+      const key = (e) => { if (e.key === 'Escape') close(false); if (e.key === 'Enter') close(true); };
+      document.addEventListener('keydown', key);
+      const bg = h('div.modal-bg', h('div.modal',
+        h('h2', title), h('p.muted', text),
+        h('div.btn-row', { style: { justifyContent: 'flex-end', marginTop: '18px' } }, btn('Cancel', { kind: 'ghost', onclick: () => close(false) }), btn(okLabel, { kind: 'primary', onclick: () => close(true) }))));
+      document.body.append(bg);
+    });
+  }
+
   const LANGUAGES = [
     ['eng', 'English'], ['slv', 'Slovenian'], ['hrv', 'Croatian'], ['srp', 'Serbian'], ['bos', 'Bosnian'],
     ['ger', 'German'], ['fre', 'French'], ['spa', 'Spanish'], ['ita', 'Italian'], ['por', 'Portuguese'],
@@ -132,5 +159,5 @@
   ];
 
   window.Sofa = window.Sofa || {};
-  Object.assign(window.Sofa, { h, append, fmtTime, fmtDuration, epCode, toast, debounce, LANGUAGES, btn, iconBtn, pill, switchEl, selectEl, checkEl, highlight, askPin });
+  Object.assign(window.Sofa, { h, append, fmtTime, fmtDuration, epCode, toast, debounce, LANGUAGES, btn, iconBtn, pill, switchEl, selectEl, checkEl, highlight, askPin, askText, askConfirm });
 })();

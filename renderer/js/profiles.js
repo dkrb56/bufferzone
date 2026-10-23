@@ -79,6 +79,7 @@
     this.saveSettings({ profileId: u.id });
     this.watchlist = null;
     this.wlMatch = null;
+    this.wlAdded = null;
     if (this.onb && document.body.classList.contains('bare') && this.onb.step === 4) this.onb = null;
     this.enterApp();
   };
