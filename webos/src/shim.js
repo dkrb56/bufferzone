@@ -139,6 +139,7 @@
   window.sofa = {
     tv: true,
     nativeHls: true,
+    version: '__BZ_VERSION__',   // set by build.js
     device: 'LG webOS',
     http,
     getSettings: async () => read(),

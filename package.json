@@ -1,7 +1,7 @@
 {
   "name": "buffer-zone",
   "productName": "Buffer Zone",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Clean desktop player for a friend's Plex server",
   "main": "main.js",
   "private": true,

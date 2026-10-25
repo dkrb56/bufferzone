@@ -115,6 +115,8 @@ async function main() {
   for (const f of ['shim.js', 'tvnav.js', 'webos.css']) {
     fs.copyFileSync(path.join(__dirname, 'src', f), path.join(OUT, f.endsWith('.css') ? f : path.join('js', f)));
   }
+  const shim = path.join(OUT, 'js', 'shim.js');
+  fs.writeFileSync(shim, fs.readFileSync(shim, 'utf8').replace('__BZ_VERSION__', VERSION));
 
   // index.html: local hls.js, shim first, remote navigation last, TV styles after the shared ones.
   // The CSP meta goes: the app runs from file:// and talks to plex.tv and the Plex server directly.

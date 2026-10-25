@@ -79,10 +79,11 @@ ipcMain.handle('token:set', (_e, token) => {
 });
 
 ipcMain.handle('open-external', (_e, url) => {
-  if (/^https:\/\/(app\.)?plex\.tv\//.test(url)) shell.openExternal(url);
+  if (/^https:\/\/(app\.)?plex\.tv\//.test(url) || /^https:\/\/github\.com\/dkrb56\/bufferzone\//.test(url)) shell.openExternal(url);
 });
 
 ipcMain.handle('log', (_e, ...args) => log('[renderer]', ...args));
+ipcMain.on('app:version', (e) => { e.returnValue = app.getVersion(); });
 
 // Generic HTTP proxy. Returns { ok, status, body } where body is parsed JSON when possible.
 ipcMain.handle('http', async (_e, { url, method = 'GET', headers = {}, timeout = 15000 }) => {

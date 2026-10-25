@@ -307,6 +307,7 @@ body.bare #rail { display: none; }
 .s-hint { font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
 .s-row .select { min-width: 220px; }
 .color-ctl { display: flex; align-items: center; gap: 12px; }
+.s-value { color: var(--text-soft); font-variant-numeric: tabular-nums; }
 .swatch { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-hover); flex: none; }
 .s-checks { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 14px 18px; }
 .preview { position: relative; aspect-ratio: 16 / 6; border-radius: 10px; overflow: hidden; container-type: size; margin-bottom: 14px; background: linear-gradient(135deg, #2b2547, #4a3a52 50%, #1d2a30); }
