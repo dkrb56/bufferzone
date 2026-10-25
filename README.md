@@ -1,6 +1,14 @@
 # Buffer Zone
 
-A clean Windows player for a friend's Plex server.
+A clean player for a friend's Plex server: Windows, Android TV and LG webOS TVs.
+
+## Download
+
+Get the newest build from [Releases](https://github.com/dkrb56/bufferzone/releases/latest):
+
+- `BufferZone-<version>-portable.exe` — Windows, no installation.
+- `BufferZone-tv-<version>.apk` — Android TV and Google TV.
+- `com.dkrb56.bufferzone_<version>_all.ipk` — LG webOS TV 5 or newer (2020+). See [webos/INSTALL.md](webos/INSTALL.md).
 
 ## Start
 
@@ -38,6 +46,40 @@ First start: click **Sign in with Plex**. Your browser opens plex.tv. Sign in th
 | S | Skip intro / credits |
 | N | Next episode |
 | Esc | Leave fullscreen, then leave the player |
+
+## Android TV
+
+The `android/` folder holds a native Android TV version (Kotlin, Compose, ExoPlayer) with the same features and design.
+
+- Sign-in: the TV shows a code; type it at **plex.tv/link** on a phone or computer.
+- Playback: Direct Play through ExoPlayer, so MKV, HEVC, AC3/EAC3 (or passthrough to a soundbar) and embedded subtitles play without conversion when the TV supports them. Otherwise the app switches to a converted stream.
+- Remote: OK = play/pause, left/right = back 10 s / forward 30 s, up/down = controls, Back = close.
+- Watchlist folders and settings are saved on the TV.
+
+Build (needs the Android SDK and Android Studio's Java):
+
+```
+cd android
+gradlew assembleDebug
+```
+
+The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Install it with `adb install` (developer options and USB or network debugging on the TV), or copy it to a USB stick and open it with a file manager on the TV.
+
+## Share as a portable exe
+
+Run `npm run dist`. It builds `dist\BufferZone-<version>-portable.exe`: one file that runs without installation on 64-bit Windows.
+
+- The exe has no personal data. Each person signs in with their own Plex account and needs access to a Plex server.
+- The exe is not code-signed, so Windows SmartScreen can warn on the first start. Click **More info**, then **Run anyway**.
+- Each start unpacks the app to a temporary folder, so it starts a few seconds slower than the installed version.
+
+## LG webOS
+
+The `webos/` folder builds the shared app (`renderer/`) into a webOS package with a remote-control layer and a small JS service that sends the Plex requests (the Plex server does not allow browser requests from a TV app). Build: `cd webos && npm install && npm run build`. Install: [webos/INSTALL.md](webos/INSTALL.md).
+
+## Build all platforms
+
+`npm run build:all` builds the Windows exe, the Android TV APK and the webOS package into `dist/`. All three take their version from `package.json`.
 
 ## Development
 
