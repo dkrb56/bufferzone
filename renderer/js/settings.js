@@ -9,6 +9,24 @@
   ];
   const AGES = [['7', '7 · TV-Y7'], ['12', '12 · TV-PG, PG'], ['13', '13 · PG-13'], ['14', '14 · TV-14'], ['16', '16'], ['17', '17 · R, TV-MA']];
 
+  const SUB_COLORS = [['#ffffff', 'White'], ['#fff35c', 'Yellow'], ['#9fe8ff', 'Light blue'], ['#c8ffc8', 'Light green'], ['#bebebe', 'Light gray (HDR, OLED)']];
+  // Hex <-> HSL (h 0–360, s and l 0–100) for the custom subtitle colour.
+  function hexToHsl(hex) {
+    const n = parseInt(String(hex || '#ffffff').slice(1), 16) || 0;
+    const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    let hue = 0;
+    if (d) hue = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    const sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+    return [Math.round((hue * 60 + 360) % 360), Math.round(sat * 100), Math.round(l * 100)];
+  }
+  function hslToHex(hue, sat, l) {
+    sat /= 100; l /= 100;
+    const k = (n) => (n + hue / 30) % 12, a = sat * Math.min(l, 1 - l);
+    const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
+    return '#' + [f(0), f(8), f(4)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+
   const row = (label, hint, control) => h('div.s-row', h('div', h('div.s-label', label), hint ? h('div.s-hint', hint) : null), control);
   const card = (...rows) => h('div.s-card', ...rows);
 
@@ -53,11 +71,29 @@
       preview.applyStyle(s);
       preview.setCues([{ start: 0, end: 5, html: 'This is how your subtitles look.<br><i>Č, š, ž, đ and ć work too.</i>' }]);
       const range = (key, min, max, step) => h('input', { type: 'range', min, max, step, value: s[key], oninput: (e) => restyle({ [key]: +e.target.value }) });
+      // Colour: a preset, or "Custom…" with hue, saturation and brightness sliders.
+      const isPreset = (c) => SUB_COLORS.some(p => p[0] === String(c).toLowerCase());
+      const swatch = h('span.swatch', { style: { background: s.subtitleColor } });
+      const hsl = hexToHsl(s.subtitleColor);
+      const applyHsl = () => { const hex = hslToHex(+hueR.value, +satR.value, +litR.value); swatch.style.background = hex; restyle({ subtitleColor: hex }); };
+      // Step 5: one remote key press moves 5 (the full hue circle is 72 presses).
+      const slider = (min, max, value) => h('input', { type: 'range', min, max, step: 5, value, oninput: applyHsl });
+      const hueR = slider(0, 355, hsl[0]), satR = slider(0, 100, hsl[1]), litR = slider(20, 100, Math.max(20, hsl[2]));
+      const customRows = h('div.s-sub', row('Hue', 'The colour tone. Raise the saturation to see it.', hueR), row('Saturation', '0% is gray, 100% is full colour.', satR), row('Brightness', null, litR));
+      if (isPreset(s.subtitleColor)) customRows.style.display = 'none';
+      const colorSel = selectEl(SUB_COLORS.concat([['custom', 'Custom…']]), isPreset(s.subtitleColor) ? s.subtitleColor : 'custom', (v) => {
+        customRows.style.display = v === 'custom' ? '' : 'none';
+        if (v === 'custom') return applyHsl();
+        swatch.style.background = v;
+        restyle({ subtitleColor: v });
+        [hueR.value, satR.value, litR.value] = hexToHsl(v);
+      });
       body.append(h('h2', title), h('p.muted', 'Applies to text subtitles. Image subtitles are part of the video and keep their own look.'),
         h('div.preview', previewEl),
         card(
           row('Size', null, range('subtitleSize', 60, 200, 10)),
-          row('Color', null, selectEl([['#ffffff', 'White'], ['#fff35c', 'Yellow'], ['#9fe8ff', 'Light blue'], ['#c8ffc8', 'Light green'], ['#bebebe', 'Light gray (HDR, OLED)']], s.subtitleColor, (v) => restyle({ subtitleColor: v }))),
+          row('Color', null, h('div.color-ctl', swatch, colorSel)),
+          customRows,
           row('Opacity', null, selectEl([[100, '100%'], [90, '90%'], [80, '80%'], [70, '70%'], [60, '60%'], [50, '50%']], s.subtitleOpacity || 100, (v) => restyle({ subtitleOpacity: Number(v) }))),
           row('Background', null, selectEl([['shadow', 'Outline and shadow'], ['box', 'Dark box'], ['none', 'None']], s.subtitleBackground, (v) => restyle({ subtitleBackground: v }))),
           row('Distance from bottom', null, range('subtitlePosition', 2, 30, 1))));

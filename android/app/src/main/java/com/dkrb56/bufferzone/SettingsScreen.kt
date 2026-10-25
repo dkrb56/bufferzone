@@ -36,6 +36,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import kotlin.math.roundToInt
 import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Brush
@@ -71,6 +75,10 @@ fun SettingsScreen(s: Screen.Settings) {
     }
     var confirmSignOut by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
+    // Custom subtitle colour: hue 0–360, saturation and lightness 0–1. Kept here so the hue survives at saturation 0.
+    var customColor by remember { mutableStateOf(false) }
+    var hsl by remember { mutableStateOf(hslOf(App.store.subtitleColor)) }
+    fun setHsl(v: FloatArray) { hsl = v; App.store.subtitleColor = hexOf(v) }
     val ctx = LocalContext.current
     val version = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "" }
 
@@ -115,7 +123,20 @@ fun SettingsScreen(s: Screen.Settings) {
                         item { SubtitlePreview() }
                         item { SettingRow("Size", null, "${st.subtitleSize}%", { ask("Size", (6..20).map { it * 10 }.map { it to "$it%" }, st.subtitleSize) { st.subtitleSize = it } }) }
                         val colors = listOf("#ffffff" to "White", "#fff35c" to "Yellow", "#9fe8ff" to "Light blue", "#c8ffc8" to "Light green", "#bebebe" to "Light gray (HDR, OLED)")
-                        item { SettingRow("Color", null, colors.firstOrNull { it.first == st.subtitleColor }?.second, { ask("Color", colors, st.subtitleColor) { st.subtitleColor = it } }) }
+                        val preset = colors.firstOrNull { it.first == st.subtitleColor.lowercase() }
+                        item {
+                            // Reading hsl (a state) redraws this row while the custom sliders change the colour.
+                            val p = colors.firstOrNull { it.first == hexOf(hsl).takeIf { _ -> customColor } ?: st.subtitleColor.lowercase() }
+                            val custom = customColor || p == null
+                            SettingRow("Color", null, if (custom) "Custom" else p?.second, { ask("Color", colors + ("custom" to "Custom…"), if (custom) "custom" else p?.first ?: "custom") {
+                                if (it == "custom") { customColor = true; setHsl(hslOf(st.subtitleColor)) } else { customColor = false; st.subtitleColor = it; hsl = hslOf(it) }
+                            } }, trailing = { ColorDot(if (customColor) hexOf(hsl) else st.subtitleColor) })
+                        }
+                        if (customColor || preset == null) {
+                            item { StepRow("Hue", "${hsl[0].roundToInt()}°", hsl[0] / 360f) { d -> setHsl(floatArrayOf((hsl[0] + d * 5 + 360) % 360, hsl[1], hsl[2])) } }
+                            item { StepRow("Saturation", "${(hsl[1] * 100).roundToInt()}%", hsl[1]) { d -> setHsl(floatArrayOf(hsl[0], (hsl[1] + d * 0.05f).coerceIn(0f, 1f), hsl[2])) } }
+                            item { StepRow("Brightness", "${(hsl[2] * 100).roundToInt()}%", hsl[2]) { d -> setHsl(floatArrayOf(hsl[0], hsl[1], (hsl[2] + d * 0.05f).coerceIn(0.2f, 1f))) } }
+                        }
                         item { SettingRow("Opacity", null, "${st.subtitleOpacity}%", { ask("Opacity", listOf(100, 90, 80, 70, 60, 50).map { it to "$it%" }, st.subtitleOpacity) { st.subtitleOpacity = it } }) }
                         val bgs = listOf("shadow" to "Outline and shadow", "box" to "Dark box", "none" to "None")
                         item { SettingRow("Background", null, bgs.firstOrNull { it.first == st.subtitleBackground }?.second, { ask("Background", bgs, st.subtitleBackground) { st.subtitleBackground = it } }) }
@@ -191,6 +212,7 @@ fun SettingsScreen(s: Screen.Settings) {
 
 @Composable
 private fun SubtitlePreview() {
+    App.store.version // redraw when a subtitle setting changes
     val st = App.store
     val color = runCatching { Color(android.graphics.Color.parseColor(st.subtitleColor)) }.getOrDefault(Color.White)
     Box(Modifier.fillMaxWidth().aspectRatio(16f / 6f).clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(listOf(Color(0xFF2B2547), Color(0xFF4A3A52), Color(0xFF1D2A30)))),
@@ -232,4 +254,41 @@ private fun LicensesDialog(onDismiss: () -> Unit) = BzDialog(onDismiss) {
                 .verticalScroll(scroll))
     }
     androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+}
+
+private fun hslOf(hex: String): FloatArray {
+    val out = FloatArray(3)
+    androidx.core.graphics.ColorUtils.colorToHSL(runCatching { android.graphics.Color.parseColor(hex) }.getOrDefault(android.graphics.Color.WHITE), out)
+    return out
+}
+private fun hexOf(hsl: FloatArray) = String.format("#%06x", androidx.core.graphics.ColorUtils.HSLToColor(hsl) and 0xffffff)
+
+@Composable
+private fun ColorDot(hex: String) {
+    val c = runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.White)
+    Box(Modifier.padding(start = 12.dp).size(22.dp).clip(androidx.compose.foundation.shape.CircleShape).background(c).border(1.dp, C.lineHover, androidx.compose.foundation.shape.CircleShape))
+}
+
+/** A value row for the remote: left and right change the value by one step. */
+@Composable
+private fun StepRow(label: String, value: String, fraction: Float, onStep: (Int) -> Unit) {
+    Focusable({}, Modifier.fillMaxWidth().onPreviewKeyEvent { ev ->
+        if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        when (ev.key.nativeKeyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> { onStep(-1); true }
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> { onStep(1); true }
+            else -> false
+        }
+    }, RoundedCornerShape(10.dp)) { f ->
+        Row(Modifier.fillMaxWidth().background(if (f) C.bg3 else C.bg2).padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                T(label, 15.sp, FontWeight.SemiBold)
+                if (f) T("Left and right change the value.", 12.sp, color = C.muted)
+            }
+            Box(Modifier.width(220.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(C.lineHover)) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceIn(0f, 1f)).background(C.accent))
+            }
+            T(value, 14.sp, color = C.soft, modifier = Modifier.padding(start = 14.dp).width(52.dp))
+        }
+    }
 }
