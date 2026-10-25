@@ -130,7 +130,10 @@
         card(
           row('Signed in as', this.user?.username || this.user?.email || '', btn('Sign out', { size: 'sm', icon: 'log-out', onclick: signOut })),
           row('Profile', this.profile?.title || '', this.homeUsers.length > 1 ? btn('Switch profile', { size: 'sm', onclick: () => this.showProfiles() }) : null),
-          row('Server', `${srv.name} · ${srv.relay ? 'Plex relay' : srv.local ? 'local network' : 'direct internet'}`, btn('Switch server', { size: 'sm', onclick: () => { this.onb = null; this.onboarding(2); } }))));
+          row('Server', `${srv.name} · ${srv.relay ? 'Plex relay' : srv.local ? 'local network' : 'direct internet'}`, btn('Switch server', { size: 'sm', onclick: () => { this.onb = null; this.onboarding(2); } }))),
+        card(
+          row('About', 'Buffer Zone · MIT License. Not affiliated with or endorsed by Plex Inc. "Plex" is a trademark of Plex Inc.',
+            btn('Open-source licenses', { size: 'sm', onclick: () => sofa.openExternal('https://github.com/dkrb56/bufferzone/blob/main/THIRD_PARTY_NOTICES.txt') }))));
     }
   };
 })();

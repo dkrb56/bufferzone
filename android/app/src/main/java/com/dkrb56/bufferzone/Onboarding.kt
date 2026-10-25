@@ -81,7 +81,7 @@ fun OnboardingScreen(step: Int) {
                 }
             }
             Spacer(Modifier.weight(1f))
-            T("You sign in on the Plex website. This app never sees your password.", 12.sp, color = C.muted)
+            T("You sign in on the Plex website. This app never sees your password. Buffer Zone is not affiliated with Plex Inc.", 12.sp, color = C.muted)
         }
         Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 80.dp, vertical = 64.dp).widthIn(max = 760.dp)) {
             T("Step $step of 4", 13.sp, FontWeight.SemiBold, C.accent)

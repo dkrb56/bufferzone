@@ -1,7 +1,7 @@
 {
   "name": "buffer-zone",
   "productName": "Buffer Zone",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Clean desktop player for a friend's Plex server",
   "main": "main.js",
   "private": true,
@@ -14,6 +14,16 @@
   "build": {
     "appId": "com.dkrb56.bufferzone",
     "productName": "Buffer Zone",
+    "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",
@@ -38,5 +48,6 @@
   },
   "dependencies": {
     "hls.js": "^1.7.3"
-  }
+  },
+  "license": "MIT"
 }

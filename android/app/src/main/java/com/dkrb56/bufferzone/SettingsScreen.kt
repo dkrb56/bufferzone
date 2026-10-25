@@ -25,7 +25,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyCode
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -58,6 +70,9 @@ fun SettingsScreen(s: Screen.Settings) {
         choice = Choice(title, options as List<Pair<Any, String>>, current as Any, { onPick(it as V) })
     }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var showLicenses by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val version = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "" }
 
     Column(Modifier.fillMaxSize()) {
         PageHead("Settings")
@@ -157,7 +172,8 @@ fun SettingsScreen(s: Screen.Settings) {
                         item { SettingRow("Signed in as", App.user?.optString("username"), "Sign out", { if (App.rules?.pinToLeave == true) App.show("Switch to the admin profile to sign out.") else confirmSignOut = true }) }
                         item { SettingRow("Profile", App.profile?.title, if (App.homeUsers.size > 1) "Switch profile" else null, { if (App.homeUsers.size > 1) App.go(Screen.Profiles, root = true) }) }
                         item { SettingRow("Server", srv?.let { "${it.name} · ${if (it.relay) "Plex relay" else if (it.local) "local network" else "direct internet"}" }, "Switch server", { App.go(Screen.Onboard(2), root = true) }) }
-                        item { SettingRow("Version", "Buffer Zone for Android TV", "0.1.0", {}) }
+                        item { SettingRow("Version", "Buffer Zone for Android TV", version, {}) }
+                        item { SettingRow("About", "MIT License. Not affiliated with or endorsed by Plex Inc.", "Open-source licenses", { showLicenses = true }) }
                     }
                 }
             }
@@ -165,6 +181,7 @@ fun SettingsScreen(s: Screen.Settings) {
     }
 
     choice?.let { c -> OptionDialog(c.title, c.options, c.current, { choice = null }) { c.onPick(it) } }
+    if (showLicenses) LicensesDialog { showLicenses = false }
     if (confirmSignOut) ConfirmDialog("Sign out?", "You need the code at plex.tv/link to sign in again.", "Sign out", { confirmSignOut = false }) {
         st.token = null; st.serverId = null; st.profileId = 0
         App.plex.token = null; App.plex.accountToken = null; App.profile = null
@@ -184,6 +201,35 @@ private fun SubtitlePreview() {
             background = if (st.subtitleBackground == "box") Color(0xB8000000) else Color.Transparent
         )
         androidx.compose.material3.Text("This is how your subtitles look.\nČ, š, ž, đ and ć work too.", style = style,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(bottom = (st.subtitlePosition * 1.6f).dp))
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(bottom = (st.subtitlePosition * 1.6f).dp).alpha(st.subtitleOpacity / 100f))
     }
+}
+
+/** License texts shipped in the APK (assets/LICENSE, assets/THIRD_PARTY_NOTICES.txt). Up/down scroll, Back closes. */
+@Composable
+private fun LicensesDialog(onDismiss: () -> Unit) = BzDialog(onDismiss) {
+    val ctx = LocalContext.current
+    val text = remember {
+        listOf("THIRD_PARTY_NOTICES.txt", "LICENSE").joinToString("\n\n") { name ->
+            runCatching { ctx.assets.open(name).bufferedReader().use { it.readText() } }.getOrDefault("")
+        }
+    }
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val fr = remember { androidx.compose.ui.focus.FocusRequester() }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        T("Open-source licenses", 20.sp, FontWeight.SemiBold)
+        androidx.compose.material3.Text(text, fontSize = 11.sp, color = C.soft, lineHeight = 15.sp,
+            modifier = Modifier.height(420.dp).focusRequester(fr).focusable()
+                .onKeyEvent { ev ->
+                    if (ev.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    when (ev.key.nativeKeyCode) {
+                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> { scope.launch { scroll.animateScrollBy(300f) }; true }
+                        android.view.KeyEvent.KEYCODE_DPAD_UP -> { scope.launch { scroll.animateScrollBy(-300f) }; true }
+                        else -> false
+                    }
+                }
+                .verticalScroll(scroll))
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
 }

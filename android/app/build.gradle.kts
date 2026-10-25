@@ -7,7 +7,16 @@ plugins {
 val appVersion: String = Regex(""""version"\s*:\s*"([^"]+)""").find(rootDir.resolve("../package.json").readText())!!.groupValues[1]
 val (vMajor, vMinor, vPatch) = appVersion.split(".").map { it.toInt() }
 
+// Ship the license texts from the repo root in the APK (assets/LICENSE, assets/THIRD_PARTY_NOTICES.txt).
+val noticesDir = layout.buildDirectory.dir("generated/notices")
+val copyNotices by tasks.registering(Copy::class) {
+    from(rootDir.resolve("../LICENSE"), rootDir.resolve("../THIRD_PARTY_NOTICES.txt"))
+    into(noticesDir)
+}
+tasks.named("preBuild") { dependsOn(copyNotices) }
+
 android {
+    sourceSets.getByName("main").assets.srcDir(noticesDir.get().asFile)
     namespace = "com.dkrb56.bufferzone"
     compileSdk = 36
 

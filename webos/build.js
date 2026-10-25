@@ -111,6 +111,7 @@ async function main() {
   fs.rmSync(path.join(__dirname, 'build'), { recursive: true, force: true });
   copyDir(path.join(ROOT, 'renderer'), OUT);
   fs.copyFileSync(path.join(ROOT, 'node_modules', 'hls.js', 'dist', 'hls.min.js'), path.join(OUT, 'js', 'hls.min.js'));
+  for (const f of ['LICENSE', 'THIRD_PARTY_NOTICES.txt']) fs.copyFileSync(path.join(ROOT, f), path.join(OUT, f));
   for (const f of ['shim.js', 'tvnav.js', 'webos.css']) {
     fs.copyFileSync(path.join(__dirname, 'src', f), path.join(OUT, f.endsWith('.css') ? f : path.join('js', f)));
   }

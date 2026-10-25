@@ -2,6 +2,8 @@
 
 A clean player for a friend's Plex server: Windows, Android TV and LG webOS TVs.
 
+*Not affiliated with or endorsed by Plex Inc.*
+
 ## Download
 
 Get the newest build from [Releases](https://github.com/dkrb56/bufferzone/releases/latest):
@@ -90,3 +92,9 @@ The `webos/` folder builds the shared app (`renderer/`) into a webOS package wit
 
 - Settings and token: `%APPDATA%\Buffer Zone\` (token is encrypted with Windows DPAPI).
 - Log for troubleshooting: `%APPDATA%\Buffer Zone\buffer-zone.log`. Tokens are masked.
+
+## License
+
+Buffer Zone is released under the [MIT License](LICENSE). It includes open-source software from other projects; see [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). Each build ships both files.
+
+Buffer Zone is not affiliated with, endorsed by or sponsored by Plex Inc. "Plex" is a trademark of Plex Inc. and is used here only to describe the servers that this app connects to.

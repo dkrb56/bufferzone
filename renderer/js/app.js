@@ -106,7 +106,7 @@
           const detail = n === 1 && this.user ? `Signed in as ${this.user.username || this.user.email}` : d;
           return h('div.step' + cls, h('div.step-dot', n < step ? icon('check', { size: 14, stroke: 3 }) : String(n)), h('div', h('div.step-t', t), h('div.step-d', detail)));
         })),
-        h('div.onb-note', 'You sign in on the Plex website. This app never sees your password.'));
+        h('div.onb-note', 'You sign in on the Plex website. This app never sees your password. Buffer Zone is not affiliated with Plex Inc.'));
       const right = h('div.onb-right');
       this.bare(h('div.onb', left, right));
       right.append(h('div.onb-step', `Step ${step} of 4`));
