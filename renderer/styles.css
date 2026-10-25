@@ -391,6 +391,7 @@ body.bare #rail { display: none; }
   position: absolute; left: 4%; right: 4%; bottom: var(--sub-bottom, 8%);
   text-align: center; pointer-events: none; z-index: 2;
   font-size: calc(var(--sub-size, 1) * 4.2cqh); font-weight: 600; line-height: 1.25; color: var(--sub-color, #fff);
+  opacity: var(--sub-opacity, 1);
   transition: bottom .2s ease, right .2s ease;
 }
 .vp.show-ui .subs { bottom: max(var(--sub-bottom, 8%), 130px); }

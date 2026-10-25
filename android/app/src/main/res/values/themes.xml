@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BufferZone" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF050505</item>
+        <item name="android:colorAccent">#FFA594FF</item>
+    </style>
+</resources>

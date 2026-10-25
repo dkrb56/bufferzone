@@ -90,6 +90,7 @@
       const st = this.el.style;
       st.setProperty('--sub-size', (s.subtitleSize / 100).toFixed(2));
       st.setProperty('--sub-color', s.subtitleColor);
+      st.setProperty('--sub-opacity', ((s.subtitleOpacity || 100) / 100).toFixed(2));
       st.setProperty('--sub-bottom', s.subtitlePosition + '%');
       this.el.dataset.bg = s.subtitleBackground;
     }

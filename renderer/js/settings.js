@@ -28,7 +28,9 @@
           row('Volume boost', 'Makes quiet titles louder. A limiter stops loud parts from distorting. Also in the player, under Audio.',
             selectEl([[100, 'Off (100%)'], [150, '150%'], [200, '200%'], [300, '300%']], s.audioBoost || 100, (v) => set({ audioBoost: Number(v) }))),
           row('Play the next episode automatically', null, switchEl(s.autoPlayNext, (v) => set({ autoPlayNext: v }))),
-          row('Countdown before next episode', null, selectEl([[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds']], s.nextCountdown, (v) => set({ nextCountdown: Number(v) })))),
+          row('Countdown before next episode', null, selectEl([[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds']], s.nextCountdown, (v) => set({ nextCountdown: Number(v) }))),
+          row('Skip back', 'Left arrow and the back button in the player.', selectEl([[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds'], [60, '1 minute']], s.skipBack || 10, (v) => set({ skipBack: Number(v) }))),
+          row('Skip forward', 'Right arrow and the forward button in the player.', selectEl([[10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds'], [60, '1 minute'], [120, '2 minutes']], s.skipForward || 30, (v) => set({ skipForward: Number(v) })))),
         card(
           row('Skip intros automatically', null, switchEl(s.autoSkipIntro, (v) => set({ autoSkipIntro: v }))),
           row('Skip credits automatically', 'Goes to the next episode.', switchEl(s.autoSkipCredits, (v) => set({ autoSkipCredits: v })))));
@@ -55,7 +57,8 @@
         h('div.preview', previewEl),
         card(
           row('Size', null, range('subtitleSize', 60, 200, 10)),
-          row('Color', null, selectEl([['#ffffff', 'White'], ['#fff35c', 'Yellow'], ['#9fe8ff', 'Light blue'], ['#c8ffc8', 'Light green']], s.subtitleColor, (v) => restyle({ subtitleColor: v }))),
+          row('Color', null, selectEl([['#ffffff', 'White'], ['#fff35c', 'Yellow'], ['#9fe8ff', 'Light blue'], ['#c8ffc8', 'Light green'], ['#bebebe', 'Light gray (HDR, OLED)']], s.subtitleColor, (v) => restyle({ subtitleColor: v }))),
+          row('Opacity', null, selectEl([[100, '100%'], [90, '90%'], [80, '80%'], [70, '70%'], [60, '60%'], [50, '50%']], s.subtitleOpacity || 100, (v) => restyle({ subtitleOpacity: Number(v) }))),
           row('Background', null, selectEl([['shadow', 'Outline and shadow'], ['box', 'Dark box'], ['none', 'None']], s.subtitleBackground, (v) => restyle({ subtitleBackground: v }))),
           row('Distance from bottom', null, range('subtitlePosition', 2, 30, 1))));
     }

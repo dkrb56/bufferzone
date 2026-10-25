@@ -12,6 +12,8 @@
       children.unshift(props);
       props = null;
     }
+    // On a TV the remote moves the focus, so clickable boxes must be focusable.
+    if (window.sofa && sofa.tv && props && props.onclick && !/^(button|input|select|a|label)$/.test(el.tagName.toLowerCase())) el.tabIndex = 0;
     for (const [k, v] of Object.entries(props || {})) {
       if (v === undefined || v === null || v === false) continue;
       if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
@@ -140,7 +142,8 @@
   function askConfirm(title, text, okLabel = 'Delete') {
     return new Promise((resolve) => {
       const close = (v) => { bg.remove(); document.removeEventListener('keydown', key); resolve(v); };
-      const key = (e) => { if (e.key === 'Escape') close(false); if (e.key === 'Enter') close(true); };
+      // Enter on a focused button runs that button (Cancel must not confirm); elsewhere Enter confirms.
+      const key = (e) => { if (e.key === 'Escape') close(false); if (e.key === 'Enter' && !bg.contains(e.target)) close(true); };
       document.addEventListener('keydown', key);
       const bg = h('div.modal-bg', h('div.modal',
         h('h2', title), h('p.muted', text),

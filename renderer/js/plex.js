@@ -24,8 +24,8 @@
         'X-Plex-Client-Identifier': this.clientId,
         'X-Plex-Platform': 'Chrome',
         'X-Plex-Platform-Version': navigator.userAgent.match(/Chrome\/([\d.]+)/)?.[1] || '1',
-        'X-Plex-Device': 'Windows',
-        'X-Plex-Device-Name': 'Buffer Zone (Windows)',
+        'X-Plex-Device': sofa.device || 'Windows',
+        'X-Plex-Device-Name': `Buffer Zone (${sofa.device || 'Windows'})`,
         'X-Plex-Model': 'hosted',
         'Accept': 'application/json'
       };
@@ -48,8 +48,9 @@
     }
 
     // ---- sign-in (PIN flow; the user signs in on plex.tv in their own browser) ----
-    async createPin() {
-      return this.tv('/api/v2/pins', { method: 'POST', params: { strong: 'true' } });
+    // strong=false gives the short code that plex.tv/link accepts (TV sign-in).
+    async createPin(strong = true) {
+      return this.tv('/api/v2/pins', { method: 'POST', params: strong ? { strong: 'true' } : undefined });
     }
     authUrl(code) {
       return 'https://app.plex.tv/auth#?' + qs({

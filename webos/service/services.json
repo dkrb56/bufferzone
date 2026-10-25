@@ -1,0 +1,7 @@
+{
+  "id": "com.dkrb56.bufferzone.service",
+  "description": "Buffer Zone HTTP helper",
+  "services": [
+    { "name": "com.dkrb56.bufferzone.service", "description": "Sends HTTP requests for the Buffer Zone app" }
+  ]
+}

@@ -72,7 +72,7 @@
         this.palette.open();
       } else if (e.key === 'Backspace' && !typing) {
         this.back();
-      } else if (this.current?.name === 'home' && !typing && this.homeKeys) {
+      } else if (!sofa.tv && this.current?.name === 'home' && !typing && this.homeKeys) {
         this.homeKeys(e);
       }
     }
@@ -114,9 +114,40 @@
     }
 
     onbSignIn(right) {
+      if (sofa.tv) return this.onbSignInTV(right);
       const status = h('p.muted');
       const b = btn('Sign in with Plex', { kind: 'primary', size: 'lg', icon: 'arrow-right', onclick: () => this.login(b, status) });
       right.append(h('h1', 'Sign in with Plex'), h('p.onb-help', 'Your browser opens the Plex website. Sign in there, then come back here.'), b, h('div', { style: { marginTop: '14px' } }, status));
+    }
+
+    // TV: no browser to open, so the TV shows a short code for plex.tv/link on a phone or computer.
+    async onbSignInTV(right) {
+      const code = h('div.link-code', '· · · ·');
+      const status = h('p.muted', 'Getting a code…');
+      const again = btn('Get a new code', { onclick: () => this.onboarding(1) });
+      right.append(h('h1', 'Sign in with Plex'), h('p.onb-help', 'On your phone or computer, open the address below and type the code.'),
+        h('div.link-url', 'plex.tv/link'), code, status, again);
+      again.focus();
+      const token = this.linkToken = Symbol();
+      try {
+        const pin = await this.plex.createPin(false);
+        code.textContent = String(pin.code || '').toUpperCase().split('').join(' ');
+        status.textContent = 'Waiting for you to enter the code…';
+        const until = Date.now() + 14 * 60 * 1000;
+        while (Date.now() < until && this.linkToken === token) {
+          await new Promise(r => setTimeout(r, 2000));
+          const t = await this.plex.checkPin(pin.id).catch(() => null);
+          if (t && this.linkToken === token) {
+            await sofa.setToken(t);
+            this.plex.token = this.plex.accountToken = t;
+            this.user = await this.plex.user();
+            return this.onboarding(2);
+          }
+        }
+        if (this.linkToken === token) status.textContent = 'The code expired. Get a new code.';
+      } catch (e) {
+        status.textContent = 'Sign-in failed: ' + e.message;
+      }
     }
 
     async login(b, status) {

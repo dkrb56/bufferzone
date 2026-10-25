@@ -1,0 +1,37 @@
+/* webOS additions on top of styles.css: remote focus, TV sign-in code and fallbacks for older TV browsers. */
+
+/* ---------- remote focus ---------- */
+:root { --focus: rgba(165, 148, 255, .65); }
+:focus { outline: 3px solid var(--focus); outline-offset: 2px; }
+.card:focus, .t-title:focus, .art:focus { outline: none; }
+.card:focus .art, .t-title:focus .art, .art:focus { box-shadow: 0 0 0 3px var(--focus); }
+.card:focus .c-title { color: var(--accent); }
+.card:focus .play-ov, .art:focus .play-ov { opacity: 1; }
+.cw-row:focus, .list-row:focus, .srv:focus, .pal-row:focus { background: var(--bg3); outline: 2px solid var(--focus); outline-offset: 0; }
+input[type=range].adjusting { outline: 3px solid #fff; }
+.prof:focus { outline: none; }
+label.switch:focus { outline-offset: 4px; border-radius: 12px; }
+.kbd, .pal-foot, .home-left .sec-head .muted { display: none; }
+.cw-row.sel:not(:focus) { background: none; }
+.p-btn[title^="Fullscreen"] { display: none; }
+
+/* ---------- sign-in with plex.tv/link ---------- */
+.link-url { font-size: 22px; font-weight: 700; color: var(--accent); margin: 4px 0 18px; }
+.link-code { font-size: 64px; font-weight: 800; letter-spacing: .18em; font-variant-numeric: tabular-nums; margin: 0 0 18px; color: var(--text); }
+
+/* ---------- aspect-ratio (Chromium 88+; webOS 22 has 87) ---------- */
+@supports not (aspect-ratio: 1 / 1) {
+  .card.poster .art { height: 0; padding-bottom: 150%; }
+  .backdrop { height: 0; padding-bottom: 43.75%; }
+  .preview { height: 0; padding-bottom: 37.5%; }
+  .card.poster .art > img, .card.poster .art > .noimg, .backdrop > img, .backdrop > .noimg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+}
+
+/* ---------- container units (Chromium 105+): the player fills the screen, so vh is the same ---------- */
+@supports not (height: 1cqh) {
+  .subs { font-size: calc(var(--sub-size, 1) * 4.2vh); }
+  .tile .subs { font-size: calc(var(--sub-size, 1) * 2.1vh); }
+  .preview .subs { font-size: calc(var(--sub-size, 1) * 4.2vh); }
+}
+
+.check input { -webkit-appearance: none; }

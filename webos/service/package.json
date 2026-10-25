@@ -1,0 +1,6 @@
+{
+  "name": "com.dkrb56.bufferzone.service",
+  "version": "0.1.0",
+  "description": "Buffer Zone HTTP helper: sends Plex requests for the app, outside the browser's CORS rules",
+  "main": "index.js"
+}

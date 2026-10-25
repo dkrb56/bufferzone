@@ -16,12 +16,16 @@
 
   const DIRECT_CONTAINERS = ['mp4', 'm4v', 'mov', 'webm', 'mkv'];
   const DIRECT_AUDIO = ['aac', 'mp3', 'opus', 'vorbis', 'flac'];
+  // TVs (webOS) decode more audio than Chromium; ask the browser. On the desktop these all answer "".
+  const probe = document.createElement('video');
+  const canAudio = { ac3: 'audio/mp4; codecs="ac-3"', eac3: 'audio/mp4; codecs="ec-3"', dts: 'audio/mp4; codecs="dtsc"', dca: 'audio/mp4; codecs="dtsc"' };
+  for (const [codec, type] of Object.entries(canAudio)) if (probe.canPlayType(type)) DIRECT_AUDIO.push(codec);
 
   function canDecodeVideo(stream) {
     const c = String(stream?.codec || '').toLowerCase();
     if (/10/.test(String(stream?.profile || '')) && c === 'h264') return false; // Hi10P
     if (['h264', 'vp8', 'vp9', 'av1'].includes(c)) return true;
-    if (c === 'hevc') return MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L120.90"');
+    if (c === 'hevc') return MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L120.90"') || !!document.createElement('video').canPlayType('video/mp4; codecs="hvc1.1.6.L120.90"');
     return false;
   }
 
@@ -46,7 +50,8 @@
     build() {
       const pbtn = (name, title, onclick) => h('button.p-btn', { title, onclick }, icon(name, { size: 20 }));
       // crossOrigin keeps direct-play media readable for Web Audio (volume boost); the main process adds the CORS header.
-      this.video = h('video', { preload: 'auto', crossOrigin: 'anonymous' });
+      // A TV has no such header, so there the server boosts the audio instead (hlsParams).
+      this.video = h('video', { preload: 'auto', crossOrigin: sofa.tv ? undefined : 'anonymous' });
       this.subEl = h('div.subs');
       this.spinner = h('div.spinner');
       this.errorBox = h('div.player-error');
@@ -94,8 +99,8 @@
           this.seek,
           h('div.p-row',
             this.playBtn,
-            pbtn('rotate-ccw', 'Back 10 s (←)', () => this.seekBy(-10)),
-            pbtn('rotate-cw', 'Forward 30 s (→)', () => this.seekBy(30)),
+            pbtn('rotate-ccw', 'Back (←)', () => this.seekBy(-this.skipBack)),
+            pbtn('rotate-cw', 'Forward (→)', () => this.seekBy(this.skipForward)),
             this.nextBtn,
             this.muteBtn,
             this.volume,
@@ -103,7 +108,7 @@
             this.timeEl,
             h('div.spacer'),
             this.qualBtn, this.ccBtn, this.epsBtn,
-            pbtn('picture-in-picture-2', 'Picture in picture', () => this.togglePip()),
+            sofa.tv ? null : pbtn('picture-in-picture-2', 'Picture in picture', () => this.togglePip()),
             this.fsBtn
           )
         )
@@ -233,6 +238,7 @@
       const container = String(this.media.container || '').toLowerCase();
       const def = this.audioStreams.find(a => a.default) || this.audioStreams[0];
       const audio = this.audio;
+      if (sofa.tv && (this.settings.audioBoost || 100) > 100) return 'volume boost';
       if (!DIRECT_CONTAINERS.includes(container)) return 'container ' + container;
       if (!canDecodeVideo(this.videoStream)) return 'video codec ' + this.videoStream?.codec;
       if (audio && def && audio.id !== def.id) return 'non-default audio track';
@@ -285,16 +291,17 @@
 
     hlsParams(offset, subMode) {
       const q = QUALITY.find(x => x.id === this.quality) || QUALITY[1];
+      const boost = sofa.tv && !this.tile ? (this.settings.audioBoost || 100) : 100;
       const p = {
         hasMDE: 1,
         path: `/library/metadata/${this.meta.ratingKey}`,
         mediaIndex: 0, partIndex: 0,
         protocol: 'hls', fastSeek: 1, copyts: 1,
-        directPlay: 0, directStream: 1, directStreamAudio: 1,
+        directPlay: 0, directStream: 1, directStreamAudio: boost > 100 ? 0 : 1,
         offset: Math.floor(offset),
         session: this.transcodeSession,
         subtitles: subMode, subtitleSize: 100,
-        audioBoost: 100, mediaBufferSize: 102400,
+        audioBoost: boost, mediaBufferSize: 102400,
         location: this.plex.server.local ? 'lan' : 'wan',
         autoAdjustQuality: 0,
         videoQuality: 100
@@ -330,6 +337,14 @@
       }
 
       const url = this.plex.url('/video/:/transcode/universal/start.m3u8', params);
+      // webOS: the TV's own player loads HLS outside the browser, so the server's CORS rules do not apply.
+      if (sofa.nativeHls && this.video.canPlayType('application/vnd.apple.mpegurl')) {
+        this.nativeHls = true;
+        this.video.src = url;
+        this.video.addEventListener('loadedmetadata', () => { if (this.offset) this.video.currentTime = this.offset; }, { once: true });
+        if (subMode === 'auto') this.loadSidecarSub(params);
+        return;
+      }
       if (!window.Hls || !Hls.isSupported()) throw new Error('HLS playback is not available.');
       // With copyts=1 Plex lists the whole file in the playlist and keeps absolute timestamps;
       // segments before the offset are empty, so playback must start at the offset.
@@ -420,6 +435,7 @@
       const err = this.video.error;
       if (!err || !this.meta) return;
       if (this.mode === 'direct') return this.fallbackToHls(`direct play error ${err.code}`);
+      if (this.nativeHls) return this.onHlsError({ type: 'networkError', details: `video error ${err.code}`, fatal: true, response: { code: 404 } });
       if (!this.hls) this.fail(new Error(`Video error ${err.code}: ${err.message || ''}`));
     }
 
@@ -444,9 +460,10 @@
 
     destroyStream() {
       clearTimeout(this.watchdog);
-      if (this.hls) {
-        this.hls.destroy();
+      if (this.hls || this.nativeHls) {
+        if (this.hls) this.hls.destroy();
         this.hls = null;
+        this.nativeHls = false;
         this.stopTranscode();
       }
       this.liveCueCount = 0;
@@ -493,6 +510,8 @@
     }
 
     seekBy(sec) { this.seekTo(this.time() + sec); }
+    get skipBack() { return this.settings.skipBack || 10; }
+    get skipForward() { return this.settings.skipForward || 30; }
 
     // `restart` starts a new transcode session even when `t` is already buffered.
     seekTo(t, { restart = false } = {}) {
@@ -716,7 +735,7 @@
     // Volume boost (settings.audioBoost, 100–300 %): video -> gain -> limiter -> speakers.
     // The Web Audio graph is built on first use; a media element cannot leave it again, so 100 % sets gain 1 and turns the limiter off.
     applyBoost() {
-      if (this.tile) return;
+      if (this.tile || sofa.tv) return;
       const boost = (this.settings.audioBoost || 100) / 100;
       if (boost <= 1 && !this.gain) return;
       if (!this.gain) {
@@ -738,6 +757,7 @@
 
     setBoost(pct) {
       this.app.saveSettings({ audioBoost: pct });
+      if (sofa.tv) return this.load(this.time());
       this.applyBoost();
       this.updateUi();
     }
@@ -827,21 +847,34 @@
       if (this.tile || !this.root.classList.contains('on')) return;
       if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
       const k = e.key.toLowerCase();
+      // TV remote: with the controls visible the arrows move the focus (tvnav.js). With them hidden,
+      // OK plays/pauses (or skips), left/right seek and up/down show the controls.
+      if (sofa.tv) {
+        const shown = this.root.classList.contains('show-ui') || this.pop.classList.contains('on');
+        if (shown && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'enter'].includes(k)) { this.poke(); return; }
+        if (!shown && k === 'enter') { e.preventDefault(); if (this.skipTarget) this.doSkip(); else { this.togglePlay(); this.poke(); } return; }
+        if (!shown && (k === 'arrowup' || k === 'arrowdown')) { e.preventDefault(); this.poke(); this.playBtn.focus(); return; }
+      }
       const map = {
         ' ': () => this.togglePlay(), k: () => this.togglePlay(),
-        arrowleft: () => this.seekBy(-10), arrowright: () => this.seekBy(30),
+        arrowleft: () => this.seekBy(-this.skipBack), arrowright: () => this.seekBy(this.skipForward),
         arrowup: () => { this.video.volume = Math.min(1, this.video.volume + 0.05); },
         arrowdown: () => { this.video.volume = Math.max(0, this.video.volume - 0.05); },
         f: () => sofa.fullscreen(), m: () => { this.video.muted = !this.video.muted; },
         n: () => this.playNext(), s: () => this.doSkip(),
         escape: () => {
           if (this.pop.classList.contains('on')) return this.closePop();
-          if (window.innerHeight === screen.height && window.innerWidth === screen.width) sofa.fullscreen(false);
+          if (!sofa.tv && window.innerHeight === screen.height && window.innerWidth === screen.width) sofa.fullscreen(false);
           else this.exit();
         },
         backspace: () => this.exit()
       };
-      if (map[k]) { e.preventDefault(); map[k](); this.poke(); }
+      if (map[k]) {
+        e.preventDefault();
+        map[k]();
+        // On a TV, seeking with the arrows keeps the controls hidden.
+        if (!(sofa.tv && (k === 'arrowleft' || k === 'arrowright'))) this.poke();
+      }
     }
   }
 
