@@ -8,3 +8,4 @@ android/app/build/
 android/local.properties
 webos/build/
 webos/node_modules/
+.claude/
