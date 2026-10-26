@@ -77,7 +77,7 @@ Run `npm run dist`. It builds `dist\BufferZone-<version>-portable.exe`: one file
 
 ## LG webOS
 
-The `webos/` folder builds the shared app (`renderer/`) into a webOS package with a remote-control layer and a small JS service that sends the Plex requests (the Plex server does not allow browser requests from a TV app). Build: `cd webos && npm install && npm run build`. Install: [webos/INSTALL.md](webos/INSTALL.md).
+The `webos/` folder builds the shared app (`renderer/`) into a webOS package with a remote-control layer and a small JS service that sends the Plex requests (the Plex server does not allow browser requests from a TV app). Embedded text subtitles (for example SRT in MKV) are drawn by the TV's own player (`luna://com.webos.media`), so those files play directly; the subtitle colour and size map to the TV's fixed choices. Build: `cd webos && npm install && npm run build`. Install: [webos/INSTALL.md](webos/INSTALL.md).
 
 ## Build all platforms
 

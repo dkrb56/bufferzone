@@ -67,7 +67,8 @@ Remote control:
 | "Cannot reach server" | Your friend's server is off, or its remote access is off. Ask your friend to check it. |
 | "The server refused the stream" | Your friend's server does not allow conversion for shared users. In the player, open **Quality** and select **Original** (Direct Play). |
 | A video does not play directly and shows "Converted" | The TV cannot decode this file (for example, DTS audio is missing on many 2020–2021 LG TVs, or the subtitles are images). The server then converts it. This needs more server power and can take a few seconds to start. |
-| Subtitles take some seconds to appear, or look different | Some subtitles must be drawn into the video by the server. The stream then restarts once. |
+| Subtitles take some seconds to appear, or look different | Some subtitles (for example image subtitles) must be drawn into the video by the server. The stream then restarts once. |
+| Subtitles inside the video file have only a few colours and sizes | The TV draws these subtitles itself, so the video plays without conversion. The TV has 6 colours (white, gray, yellow, red, green, blue); the app picks the one nearest to your colour in **Settings → Subtitle style**. Size below 100% is small. Background and position do not apply. |
 | Volume boost restarts the video | On a TV the server makes the audio louder, so a change restarts the stream for a moment. |
 | Multi-view shows a black or frozen tile | Many TVs decode only one or two videos at a time. Use fewer tiles. |
 | The first screen after you start the app is slow | The app starts its helper service on the first request. This takes a second or two. |
