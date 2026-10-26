@@ -25,11 +25,17 @@
       this.input.addEventListener('keydown', (e) => this.onKey(e));
       this.tabsEl = h('div.tabs');
       this.resEl = h('div.pal-res');
+      // The key hints are buttons too. Mouse down does not take the focus, so typing and the arrow keys go on working.
+      const key = (cls, label, title, fn) => h('button.' + cls, { title, onmousedown: (e) => e.preventDefault(), onclick: fn }, label);
       this.root.replaceChildren(h('div.pal',
-        h('div.pal-input', icon('search', { size: 20 }), this.input, h('span.kbd', 'Esc')),
+        h('div.pal-input', icon('search', { size: 20 }), this.input, key('kbd', 'Esc', 'Close', () => this.close())),
         h('div.pal-tabs', this.tabsEl),
         this.resEl,
-        h('div.pal-foot', h('span', '↑ ↓ move'), h('span', 'Enter open'), this.onPick ? null : h('span', 'Ctrl Enter play'), h('span', 'Esc close'))));
+        h('div.pal-foot',
+          h('span', key('pal-key', '↑', 'Move up', () => this.move(-1)), key('pal-key', '↓', 'Move down', () => this.move(1)), ' move'),
+          key('pal-key', 'Enter open', 'Open the selected title', () => this.choose(this.active, false)),
+          this.onPick ? null : key('pal-key', 'Ctrl Enter play', 'Play the selected title', () => this.choose(this.active, true)),
+          key('pal-key', 'Esc close', 'Close', () => this.close()))));
       this.root.classList.add('on');
       this.isOpen = true;
       this.draw();
@@ -130,10 +136,16 @@
       else this.app.open(r.item);
     }
 
+    move(d) {
+      if (!this.rows || !this.rows.length) return;
+      this.active = Math.max(0, Math.min(this.rows.length - 1, this.active + d));
+      this.mark();
+    }
+
     onKey(e) {
       if (e.key === 'Escape') { e.preventDefault(); this.close(); }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); this.active = Math.min(this.rows.length - 1, this.active + 1); this.mark(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); this.active = Math.max(0, this.active - 1); this.mark(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); this.move(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); this.move(-1); }
       else if (e.key === 'Enter') { e.preventDefault(); this.choose(this.active, e.ctrlKey); }
     }
   }

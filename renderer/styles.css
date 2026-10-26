@@ -383,6 +383,10 @@ body.bare #rail { display: none; }
 .pal-row .kbd { margin-left: auto; visibility: hidden; }
 .pal-row.active .kbd { visibility: visible; }
 .pal-foot { border-top: 1px solid var(--line); padding: 10px 18px; font-size: 12px; color: var(--muted); display: flex; gap: 16px; flex: none; }
+.pal-key { background: none; border: 0; padding: 2px 6px; margin: -2px -6px; border-radius: 5px; color: inherit; font: inherit; }
+.pal-foot > span .pal-key { margin: -2px 0; }
+.pal-key:hover, .pal-input .kbd:hover { color: var(--text); background: var(--bg3); }
+.pal-input .kbd { background: none; font-family: inherit; }
 
 /* ---------- player ---------- */
 #player { position: fixed; inset: 0; background: #000; display: none; z-index: 50; container-type: size; cursor: none; }
