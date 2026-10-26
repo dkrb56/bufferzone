@@ -119,6 +119,22 @@
     });
   }
 
+  // One call to a TV service; resolves with its parsed answer (a failure has returnValue false).
+  function luna(uri, params = {}, timeout = 5000) {
+    return new Promise((resolve) => {
+      if (typeof window.PalmServiceBridge === 'undefined') return resolve({ returnValue: false, errorText: 'no service bridge' });
+      const bridge = new window.PalmServiceBridge();
+      bridges.add(bridge);
+      let done = false;
+      const finish = (m) => { if (done) return; done = true; clearTimeout(timer); bridges.delete(bridge); resolve(m); };
+      const timer = setTimeout(() => finish({ returnValue: false, errorText: 'service timeout' }), timeout);
+      bridge.onservicecallback = (text) => {
+        try { finish(JSON.parse(text)); } catch (e) { finish({ returnValue: false, errorText: 'bad service answer' }); }
+      };
+      bridge.call(uri, JSON.stringify(params));
+    });
+  }
+
   async function viaFetch({ url, method = 'GET', headers = {}, timeout = 15000 }) {
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = ctrl ? setTimeout(() => ctrl.abort(), timeout) : null;
@@ -142,6 +158,7 @@
     version: '__BZ_VERSION__',   // set by build.js
     device: 'LG webOS',
     http,
+    luna,
     getSettings: async () => read(),
     setSettings: async (patch) => { const s = Object.assign(read(), patch); write(s); return s; },
     getToken: async () => { try { return localStorage.getItem('bz.token'); } catch (e) { return null; } },

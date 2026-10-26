@@ -14,6 +14,23 @@
     { id: '1000', label: '1 Mbps · 480p', short: '1 Mbps', bitrate: 1000, res: '720x480' }
   ];
 
+  // On a TV, LG's player can draw a file's embedded text subtitles itself (luna://com.webos.media),
+  // so those files play directly instead of being converted with the subtitles burned in.
+  const NATIVE_SUBS = !!(sofa.tv && sofa.luna);
+  // LG's subtitle colours, by its index; sizes are 0 (small), 1 (default) and up.
+  const LG_COLORS = { yellow: 0, red: 1, white: 2, green: 3, blue: 4, gray: 5 };
+  function lgColor(hex) {
+    const n = parseInt(String(hex || '#ffffff').slice(1), 16) || 0;
+    const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+    const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+    if (d < 50) return max > 220 ? LG_COLORS.white : LG_COLORS.gray;
+    const hue = max === r ? (60 * (g - b) / d + 360) % 360 : max === g ? 60 * (b - r) / d + 120 : 60 * (r - g) / d + 240;
+    const near = [[0, 'red'], [60, 'yellow'], [120, 'green'], [240, 'blue'], [360, 'red']]
+      .reduce((a, x) => Math.abs(x[0] - hue) < Math.abs(a[0] - hue) ? x : a);
+    return LG_COLORS[near[1]];
+  }
+  const lgSize = (pct) => pct < 100 ? 0 : pct <= 120 ? 1 : pct <= 160 ? 2 : 3;
+
   const DIRECT_CONTAINERS = ['mp4', 'm4v', 'mov', 'webm', 'mkv'];
   const DIRECT_AUDIO = ['aac', 'mp3', 'opus', 'vorbis', 'flac'];
   // TVs (webOS) decode more audio than Chromium; ask the browser. On the desktop these all answer "".
@@ -244,8 +261,13 @@
       if (audio && def && audio.id !== def.id) return 'non-default audio track';
       if (audio && !DIRECT_AUDIO.includes(String(audio.codec).toLowerCase())) return 'audio codec ' + audio.codec;
       const sub = this.sub;
-      if (sub && !(sub.key && Subtitles.isTextSub(sub))) return 'embedded or image subtitles';
+      if (sub && !(sub.key && Subtitles.isTextSub(sub)) && !this.canNativeSub(sub)) return 'embedded or image subtitles';
       return true;
+    }
+
+    // Embedded text subtitle that LG's player can draw (a TV, not a Multi-view tile, and it worked before).
+    canNativeSub(s) {
+      return NATIVE_SUBS && !this.tile && !this.noNativeSubs && !!s && !s.key && Subtitles.isTextSub(s);
     }
 
     async load(startAt) {
@@ -266,6 +288,7 @@
         this.offset = 0;
         this.video.src = this.plex.url(this.part.key, { 'X-Plex-Token': this.plex.server.token });
         this.video.addEventListener('loadedmetadata', () => { if (startAt) this.video.currentTime = startAt; }, { once: true });
+        if (this.canNativeSub(sub)) this.video.addEventListener('loadedmetadata', () => this.setNativeSub(sub), { once: true });
         this.watchdog = setTimeout(() => {
           if (this.mode === 'direct' && this.video.readyState < 2) this.fallbackToHls('direct play timed out');
         }, 20000);
@@ -458,7 +481,44 @@
       this.errorBox.classList.add('on');
     }
 
+    // LG's id for the media pipeline that plays our <video> (needed for luna://com.webos.media calls).
+    async lgMediaId() {
+      if (this.video.mediaId) return this.video.mediaId;
+      const r = await sofa.luna('luna://com.webos.media/getActivePipelines', {});
+      const mine = (Array.isArray(r) ? r : []).filter(p => p.type === 'media' && String(p.uri || '').includes(this.part.key));
+      mine.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      return mine[0]?.id || null;
+    }
+
+    // Show an embedded subtitle with LG's player (null hides it). If the TV refuses, burn it in instead.
+    async setNativeSub(sub) {
+      const src = this.video.src;
+      const id = this.nativeMediaId || (this.nativeMediaId = await this.lgMediaId());
+      if (this.video.src !== src) return;
+      const call = (method, p) => id ? sofa.luna('luna://com.webos.media/' + method, { mediaId: id, ...p }) : Promise.resolve({ returnValue: false, errorText: 'no media id' });
+      let res;
+      if (!sub) res = [await call('setSubtitleEnable', { enable: false })];
+      else {
+        // LG numbers the file's subtitle tracks in file order.
+        const index = this.subStreams.filter(s => !s.key).sort((a, b) => (a.index ?? 0) - (b.index ?? 0)).indexOf(sub);
+        const s = this.settings;
+        res = [
+          await call('selectTrack', { type: 'text', index }),
+          await call('setSubtitleEnable', { enable: true }),
+          await call('setSubtitleColor', { color: lgColor(s.subtitleColor) }),
+          await call('setSubtitleFontSize', { fontSize: lgSize(s.subtitleSize || 100) })
+        ];
+      }
+      const bad = res.find(r => r.returnValue === false);
+      sofa.log('native subtitles', { mediaId: id, sub: sub?.id ?? null, ok: !bad, error: bad?.errorText });
+      if (bad && sub && this.video.src === src) {
+        this.noNativeSubs = true;
+        this.load(this.time());
+      }
+    }
+
     destroyStream() {
+      this.nativeMediaId = null;
       clearTimeout(this.watchdog);
       if (this.hls || this.nativeHls) {
         if (this.hls) this.hls.destroy();
@@ -797,6 +857,12 @@
       this.subId = x?.id ?? null;
       this.saveSeriesPref({ subtitleLang: x ? langOf(x) || 'off' : 'off' });
       this.burnSubs = false;
+      // Subtitles LG's player draws switch (or turn off) without reloading too.
+      if (this.mode === 'direct' && (prev ? this.canNativeSub(prev) : this.canNativeSub(x)) && (!x || this.canNativeSub(x))) {
+        this.setNativeSub(x || null);
+        this.plex.selectStreams(this.part.id, { subtitleStreamID: this.subId ?? 0 }).catch(() => {});
+        return;
+      }
       // External text subtitles switch without reloading the video.
       const simple = (s) => !s || (s.key && Subtitles.isTextSub(s));
       if (simple(prev) && simple(x) && (this.mode === 'direct' || this.subMode === 'none')) {
