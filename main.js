@@ -85,6 +85,34 @@ ipcMain.handle('open-external', (_e, url) => {
 ipcMain.handle('log', (_e, ...args) => log('[renderer]', ...args));
 ipcMain.on('app:version', (e) => { e.returnValue = app.getVersion(); });
 
+// Self-update: the installed Windows app only. The portable exe and dev runs have no installer to update.
+const canSelfUpdate = () => app.isPackaged && process.platform === 'win32' && !process.env.PORTABLE_EXECUTABLE_DIR;
+let updater;
+function getUpdater() {
+  if (updater) return updater;
+  updater = require('electron-updater').autoUpdater;
+  updater.autoDownload = false;
+  updater.autoInstallOnAppQuit = false;   // installs only after the user confirms
+  updater.logger = { info: (m) => log('updater', m), warn: (m) => log('updater', m), error: (m) => log('updater', m), debug: () => {} };
+  updater.on('error', (err) => log('updater error', String(err)));
+  return updater;
+}
+ipcMain.on('update:can', (e) => { e.returnValue = canSelfUpdate(); });
+ipcMain.handle('update:download', async (e) => {
+  if (!canSelfUpdate()) throw new Error('self-update is not available');
+  const u = getUpdater();
+  const onProgress = (p) => e.sender.send('update:progress', Math.round(p.percent));
+  u.on('download-progress', onProgress);
+  try {
+    const r = await u.checkForUpdates();
+    if (!r || !r.isUpdateAvailable) throw new Error('no update available');
+    await u.downloadUpdate();
+  } finally {
+    u.off('download-progress', onProgress);
+  }
+});
+ipcMain.handle('update:install', () => { if (canSelfUpdate()) getUpdater().quitAndInstall(true, true); });
+
 // Generic HTTP proxy. Returns { ok, status, body } where body is parsed JSON when possible.
 ipcMain.handle('http', async (_e, { url, method = 'GET', headers = {}, timeout = 15000 }) => {
   const ctrl = new AbortController();

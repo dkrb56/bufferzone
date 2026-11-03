@@ -163,7 +163,29 @@
         this.onboarding(1);
       };
       // Version row: Check for updates turns into Download when GitHub has a newer release.
-      const download = (v) => btn(`Download ${v}`, { size: 'sm', kind: 'primary', onclick: () => sofa.openExternal('https://github.com/dkrb56/bufferzone/releases/latest') });
+      const RELEASES = 'https://github.com/dkrb56/bufferzone/releases/latest';
+      const download = (v) => {
+        if (!sofa.canSelfUpdate) return btn(`Download ${v}`, { size: 'sm', kind: 'primary', onclick: () => sofa.openExternal(RELEASES) });
+        // Installed Windows app: confirm, download, then the installer runs and the app starts again.
+        const b = btn(`Update to ${v}`, { size: 'sm', kind: 'primary', onclick: async () => {
+          if (!await S.askConfirm(`Update to ${v}?`, 'The app downloads the update, closes and starts again. Your settings and sign-in stay.', 'Update')) return;
+          b.disabled = true;
+          b.textContent = 'Downloading…';
+          sofa.onUpdateProgress((pct) => { b.textContent = `Downloading ${pct}%`; });
+          try {
+            await sofa.downloadUpdate();
+            b.textContent = 'Installing…';
+            await sofa.installUpdate();
+          } catch (e) {
+            sofa.log('update failed', String(e));
+            toast('Could not update. Opening the download page.');
+            sofa.openExternal(RELEASES);
+            b.disabled = false;
+            b.textContent = `Update to ${v}`;
+          }
+        } });
+        return b;
+      };
       const check = btn('Check for updates', { size: 'sm', onclick: async () => {
         check.disabled = true;
         check.textContent = 'Checking…';
