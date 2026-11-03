@@ -162,13 +162,28 @@
         this.onb = null;
         this.onboarding(1);
       };
+      // Version row: Check for updates turns into Download when GitHub has a newer release.
+      const download = (v) => btn(`Download ${v}`, { size: 'sm', kind: 'primary', onclick: () => sofa.openExternal('https://github.com/dkrb56/bufferzone/releases/latest') });
+      const check = btn('Check for updates', { size: 'sm', onclick: async () => {
+        check.disabled = true;
+        check.textContent = 'Checking…';
+        try {
+          const v = await this.checkUpdate();
+          if (v) { const d = download(v); check.replaceWith(d); d.focus(); return; }
+          toast(`You have the newest version (${sofa.version}).`);
+        } catch (e) { toast('Could not check for updates. Try again later.'); }
+        check.disabled = false;
+        check.textContent = 'Check for updates';
+        check.focus();
+      } });
+      const updateCtl = h('div.color-ctl', h('span.s-value', sofa.version || ''), this.updateVersion ? download(this.updateVersion) : check);
       body.append(h('h2', title),
         card(
           row('Signed in as', this.user?.username || this.user?.email || '', btn('Sign out', { size: 'sm', icon: 'log-out', onclick: signOut })),
           row('Profile', this.profile?.title || '', this.homeUsers.length > 1 ? btn('Switch profile', { size: 'sm', onclick: () => this.showProfiles() }) : null),
           row('Server', `${srv.name} · ${srv.relay ? 'Plex relay' : srv.local ? 'local network' : 'direct internet'}`, btn('Switch server', { size: 'sm', onclick: () => { this.onb = null; this.onboarding(2); } }))),
         card(
-          row('Version', `Buffer Zone for ${sofa.tv ? 'LG webOS' : 'Windows'}`, h('span.s-value', sofa.version || '')),
+          row('Version', `Buffer Zone for ${sofa.tv ? 'LG webOS' : 'Windows'}`, updateCtl),
           row('About', 'Buffer Zone · MIT License. Not affiliated with or endorsed by Plex Inc. "Plex" is a trademark of Plex Inc.',
             btn('Open-source licenses', { size: 'sm', onclick: () => sofa.openExternal('https://github.com/dkrb56/bufferzone/blob/main/THIRD_PARTY_NOTICES.txt') }))));
     }

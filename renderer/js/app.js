@@ -44,6 +44,7 @@
       this.multiview = new S.MultiView(this);
       this.palette = new S.Palette(this);
       document.addEventListener('keydown', (e) => this.onKey(e));
+      setTimeout(() => this.announceUpdate(), 5000);
 
       const token = await sofa.getToken();
       if (!token) return this.onboarding(1);
@@ -56,6 +57,25 @@
       }
       if (!this.settings.serverId) return this.onboarding(2);
       await this.reconnect();
+    }
+
+    // ---------- updates ----------
+    // The newest release on GitHub. Sets this.updateVersion when it is newer than this app; throws when the check fails.
+    async checkUpdate() {
+      const res = await sofa.http({ url: 'https://api.github.com/repos/dkrb56/bufferzone/releases/latest', timeout: 10000 });
+      const tag = res.ok && res.body && res.body.tag_name;
+      if (!tag) throw new Error(`update check failed (${res.status})`);
+      const latest = String(tag).replace(/^v/, '');
+      const parts = (v) => String(v).split('.').map(n => parseInt(n, 10) || 0);
+      const [a, b] = [parts(latest), parts(sofa.version)];
+      const diff = [0, 1, 2].map(i => (a[i] || 0) - (b[i] || 0)).find(d => d !== 0) || 0;
+      this.updateVersion = diff > 0 ? latest : null;
+      return this.updateVersion;
+    }
+    // At start-up: a short note, and silence when the check fails.
+    async announceUpdate() {
+      const v = await this.checkUpdate().catch(() => null);
+      if (v) S.toast(`Buffer Zone ${v} is available. See Settings → Account.`, 8000);
     }
 
     saveSettings(patch) {

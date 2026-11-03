@@ -1,14 +1,14 @@
 {
   "name": "buffer-zone",
   "productName": "Buffer Zone",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Clean desktop player for a friend's Plex server",
   "main": "main.js",
   "private": true,
   "author": "dkrb56",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable",
+    "dist": "electron-builder --win nsis portable",
     "build:all": "node scripts/build-all.js"
   },
   "build": {
@@ -34,11 +34,24 @@
       "output": "dist"
     },
     "win": {
-      "target": "portable",
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "build/icon.png"
     },
     "portable": {
       "artifactName": "BufferZone-${version}-portable.exe"
+    },
+    "nsis": {
+      "artifactName": "BufferZone-${version}-setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Buffer Zone",
+      "license": "LICENSE"
     }
   },
   "devDependencies": {

@@ -8,6 +8,7 @@ A clean player for a friend's Plex server: Windows, Android TV and LG webOS TVs.
 
 Get the newest build from [Releases](https://github.com/dkrb56/bufferzone/releases/latest):
 
+- `BufferZone-<version>-setup.exe` — Windows installer, with Start menu and desktop shortcuts and an uninstaller.
 - `BufferZone-<version>-portable.exe` — Windows, no installation.
 - `BufferZone-tv-<version>.apk` — Android TV and Google TV.
 - `com.dkrb56.bufferzone_<version>_all.ipk` — LG webOS TV 5 or newer (2020+). See [webos/INSTALL.md](webos/INSTALL.md).

@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -77,10 +78,16 @@ object App {
     private val wlMutex = Mutex()
     private var wlLoading: Deferred<List<Item>>? = null
 
+    // Set when GitHub has a release newer than this app.
+    var updateVersion by mutableStateOf<String?>(null)
+    var appVersion = ""
+        private set
+
     fun init(context: Context) {
         if (::store.isInitialized) return
         store = Store(context.applicationContext)
         plex = Plex(store.clientId)
+        appVersion = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
     }
 
     // ---------- navigation ----------
@@ -105,8 +112,28 @@ object App {
         else -> Unit
     }
 
+    // ---------- updates ----------
+    /** The newest release on GitHub; sets updateVersion when it is newer than this app. Throws when the check fails. */
+    suspend fun checkUpdate(): String? {
+        val body = withContext(Dispatchers.IO) {
+            val req = okhttp3.Request.Builder().url("https://api.github.com/repos/dkrb56/bufferzone/releases/latest").build()
+            plex.http.newCall(req).execute().use { r -> check(r.isSuccessful) { "update check failed (${r.code})" }; r.body?.string() ?: "" }
+        }
+        val latest = JSONObject(body).getString("tag_name").removePrefix("v")
+        val parts = { v: String -> v.split(".").map { it.toIntOrNull() ?: 0 } }
+        val a = parts(latest); val b = parts(appVersion)
+        val diff = (0..2).map { (a.getOrNull(it) ?: 0) - (b.getOrNull(it) ?: 0) }.firstOrNull { it != 0 } ?: 0
+        updateVersion = if (diff > 0) latest else null
+        return updateVersion
+    }
+
     // ---------- start-up ----------
     fun start() {
+        // A short note when a new version exists; silence when the check fails.
+        scope.launch {
+            delay(5000)
+            runCatching { checkUpdate() }.getOrNull()?.let { show("Buffer Zone $it is available. See Settings → Account.") }
+        }
         scope.launch {
             val token = store.token
             if (token == null) { go(Screen.Onboard(1), root = true); return@launch }

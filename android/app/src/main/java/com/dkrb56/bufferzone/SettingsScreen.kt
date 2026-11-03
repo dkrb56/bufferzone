@@ -193,7 +193,17 @@ fun SettingsScreen(s: Screen.Settings) {
                         item { SettingRow("Signed in as", App.user?.optString("username"), "Sign out", { if (App.rules?.pinToLeave == true) App.show("Switch to the admin profile to sign out.") else confirmSignOut = true }) }
                         item { SettingRow("Profile", App.profile?.title, if (App.homeUsers.size > 1) "Switch profile" else null, { if (App.homeUsers.size > 1) App.go(Screen.Profiles, root = true) }) }
                         item { SettingRow("Server", srv?.let { "${it.name} · ${if (it.relay) "Plex relay" else if (it.local) "local network" else "direct internet"}" }, "Switch server", { App.go(Screen.Onboard(2), root = true) }) }
-                        item { SettingRow("Version", "Buffer Zone for Android TV", version, {}) }
+                        item { SettingRow("Version", "Buffer Zone for Android TV. Press OK to check for updates.", version, {
+                            App.scope.launch {
+                                App.show("Checking for updates…")
+                                runCatching { App.checkUpdate() }.onSuccess { v -> App.show(if (v != null) "Version $v is available." else "You have the newest version.") }
+                                    .onFailure { App.show("Could not check for updates. Try again later.") }
+                            }
+                        }) }
+                        App.updateVersion?.let { v -> item { SettingRow("Version $v is available", "Download: github.com/dkrb56/bufferzone/releases/latest", "Open", {
+                            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dkrb56/bufferzone/releases/latest"))) }
+                                .onFailure { App.show("Open the address on a phone or computer.") }
+                        }) } }
                         item { SettingRow("About", "MIT License. Not affiliated with or endorsed by Plex Inc.", "Open-source licenses", { showLicenses = true }) }
                     }
                 }
