@@ -442,7 +442,8 @@ body.bare #rail { display: none; }
 .seek-markers { position: absolute; left: 0; right: 0; height: 100%; pointer-events: none; }
 .mk { position: absolute; top: 50%; height: 4px; transform: translateY(-50%); background: var(--marker); }
 .seek-hover { position: absolute; bottom: 22px; transform: translateX(-50%); background: rgba(0,0,0,.85); padding: 2px 7px; border-radius: 5px; font-size: 12px; font-variant-numeric: tabular-nums; opacity: 0; pointer-events: none; }
-.seek:hover .seek-hover { opacity: 1; }
+.seek:hover .seek-hover, .seek:focus .seek-hover { opacity: 1; }
+.seek:focus::before, .seek:focus .seek-fill, .seek:focus .seek-buf, .seek:focus .mk { height: 6px; }
 
 .p-pop { position: absolute; right: 22px; bottom: 96px; background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); display: none; z-index: 5; cursor: default; }
 .p-pop.on { display: block; }

@@ -86,6 +86,7 @@
       this.markersEl = h('div.seek-markers');
       this.seek = h('div.seek', {
         onclick: (e) => this.seekTo(this.posFromEvent(e)),
+        onfocus: () => this.updateUi(),
         onmousemove: (e) => {
           const t = this.posFromEvent(e);
           this.seekHover.textContent = fmtTime(t);
@@ -557,6 +558,8 @@
 
     exit() {
       const meta = this.meta;
+      clearTimeout(this.scrubTimer);
+      this.scrubTo = null;
       this.closePop();
       this.stopInternal();
       this.meta = null;
@@ -582,17 +585,38 @@
     get skipForward() { return this.settings.skipForward || 30; }
 
     // `restart` starts a new transcode session even when `t` is already buffered.
-    seekTo(t, { restart = false } = {}) {
+    // A paused video stays paused unless `play` is set.
+    seekTo(t, { restart = false, play = false } = {}) {
       t = Math.max(0, Math.min(this.duration - 1, t));
-      if (this.mode === 'direct') { this.video.currentTime = t; return; }
+      const resume = play || !this.video.paused;
+      const jump = () => { this.video.currentTime = t; if (play) this.video.play().catch(() => {}); };
+      if (this.mode === 'direct') return jump();
       const b = this.video.buffered;
       for (let i = 0; !restart && i < b.length; i++) {
-        if (t >= b.start(i) && t <= b.end(i)) { this.video.currentTime = t; return; }
+        if (t >= b.start(i) && t <= b.end(i)) return jump();
       }
       // Outside the buffer: restart the transcode at the new position.
       this.spinner.classList.add('on');
       this.destroyStream();
-      this.startHls(t, this.subMode).then(() => this.video.play().catch(() => {})).catch(e => this.fail(e));
+      this.startHls(t, this.subMode).then(() => { if (resume) this.video.play().catch(() => {}); }).catch(e => this.fail(e));
+    }
+
+    // TV seek bar: the arrows move a preview position; the seek happens once the presses stop,
+    // so holding an arrow does not restart a transcode on every step.
+    scrub(sec) {
+      this.scrubTo = Math.max(0, Math.min(this.duration - 1, (this.scrubTo ?? this.time()) + sec));
+      this.updateUi();
+      clearTimeout(this.scrubTimer);
+      this.scrubTimer = setTimeout(() => this.commitScrub(), 700);
+    }
+
+    commitScrub({ play = false } = {}) {
+      clearTimeout(this.scrubTimer);
+      const t = this.scrubTo;
+      this.scrubTo = null;
+      if (t == null) return false;
+      this.seekTo(t, { play });
+      return true;
     }
 
     togglePlay() {
@@ -884,7 +908,7 @@
 
     // ---------- UI ----------
     updateUi() {
-      const t = this.time();
+      const t = this.scrubTo ?? this.time();
       const d = this.duration || 1;
       // Icons are rebuilt only when their state changes.
       const state = `${this.video.paused}|${this.video.muted || this.video.volume === 0}|${this.mode}|${this.quality}|${this.settings.audioBoost}`;
@@ -902,6 +926,10 @@
       this.timeEl.textContent = `${fmtTime(t)} / ${fmtTime(d)}`;
       this.seekFill.style.width = `${(t / d) * 100}%`;
       this.seekThumb.style.left = `${(t / d) * 100}%`;
+      if (document.activeElement === this.seek) {
+        this.seekHover.textContent = fmtTime(t);
+        this.seekHover.style.left = `${(t / d) * 100}%`;
+      }
       const b = this.video.buffered;
       this.seekBuf.style.width = b.length ? `${(b.end(b.length - 1) / d) * 100}%` : '0';
       this.ccBtn.classList.toggle('on', this.subId != null);
@@ -923,10 +951,24 @@
       const k = e.key.toLowerCase();
       // TV remote: with the controls visible the arrows move the focus (tvnav.js). With them hidden,
       // OK plays/pauses (or skips), left/right seek and up/down show the controls.
+      // On the seek bar left/right scrub and OK plays/pauses at the chosen spot.
       if (sofa.tv) {
-        const shown = this.root.classList.contains('show-ui') || this.pop.classList.contains('on');
+        const popOn = this.pop.classList.contains('on');
+        const shown = this.root.classList.contains('show-ui') || popOn;
+        if (shown && e.target === this.seek && ['arrowleft', 'arrowright', 'enter'].includes(k)) {
+          e.preventDefault();
+          this.poke();
+          if (k === 'enter') { if (!this.commitScrub({ play: true })) this.togglePlay(); }
+          else this.scrub(k === 'arrowleft' ? -this.skipBack : this.skipForward);
+          return;
+        }
+        // OK with nothing focused in the controls (e.g. right after pausing) plays/pauses and lands on Play.
+        if (shown && k === 'enter' && !popOn && !this.controls.contains(document.activeElement)) {
+          e.preventDefault(); this.togglePlay(); this.poke(); this.playBtn.focus(); return;
+        }
         if (shown && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'enter'].includes(k)) { this.poke(); return; }
-        if (!shown && k === 'enter') { e.preventDefault(); if (this.skipTarget) this.doSkip(); else { this.togglePlay(); this.poke(); } return; }
+        // Pausing with OK puts the focus on Play, so the next OK resumes.
+        if (!shown && k === 'enter') { e.preventDefault(); if (this.skipTarget) this.doSkip(); else { this.togglePlay(); this.poke(); this.playBtn.focus(); } return; }
         if (!shown && (k === 'arrowup' || k === 'arrowdown')) { e.preventDefault(); this.poke(); this.playBtn.focus(); return; }
       }
       const map = {
