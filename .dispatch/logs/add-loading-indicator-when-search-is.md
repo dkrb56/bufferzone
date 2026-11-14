@@ -506,6 +506,7 @@ evidence: yes
 What nobody tried:
 - Nobody started the app on Windows, on an LG TV or on Android TV. Nobody saw the ring.
 - Nobody tested a slow server, typing fast, or a network that is off.
+- Nobody saw the two guards work. On Android, the test needs a server that answers slower than the 300 ms pause after a keystroke.
 - Nobody tested an older TV without flex gap, or the search in the Multi-view picker.
 - Nobody tested a screen reader with the new `aria-busy` state.
 
@@ -521,6 +522,12 @@ Manual tests for the tester:
 Deviations from the plan:
 - The ring is centered on the row height (`top: calc(50% - 10px)`), not at a fixed 20 px. It is 19.5 px from the top, the same place as the icon.
 - On Android, the icon slot at the right end of the field is always there and stays empty when no search runs. The text area is about 48 dp narrower, but the field does not jump when the ring shows.
+- The two guards are not in the plan. You approved them with your answer.
+- Your answer said "amend the commit". I did not amend it. Dispatch made three commits on top of `5b7c37a`, and an amend would rewrite them while Dispatch keeps committing. So the guards are in a second commit, `e2d26ac`, marked `fixup!`. To fold it into the first commit before the push, run the command below. It also rewrites the three Dispatch commits, so run it while no worker runs.
+
+```
+git rebase -i --autosquash c4f0748
+```
 
 ## Follow-ups
 - Android, older than this task: when the user types again, the cancelled search still writes its result as an empty list. "No results." can flash while typing fast. The cause is the same as in question 1. This task did not fix it.
