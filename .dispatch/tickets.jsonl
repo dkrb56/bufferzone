@@ -4,3 +4,4 @@
 {"op":"status","ref":"make-windows-installer","ts":"2026-11-14T21:08:49.797Z","status":"todo","order":2}
 {"op":"update","ref":"add-loading-indicator-when-search-is","ts":"2026-11-14T21:09:05.025Z","title":"loading indicator in the search dialog while a search runs"}
 {"op":"status","ref":"add-loading-indicator-when-search-is","ts":"2026-11-14T21:09:05.025Z","status":"in_progress","order":null}
+{"op":"close","ref":"make-windows-installer","ts":"2026-11-14T21:10:57.573Z","resolution":"wontfix","note":"triage answered without a task","order":null}
