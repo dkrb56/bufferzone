@@ -87,6 +87,13 @@ From the moment the search request leaves until the results stand in the list, t
 ## Size
 2 files: `renderer/js/search.js` (about 12 changed or added lines), `renderer/styles.css` (3 lines). With Decision 2 a third: `android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt` (about 6 lines).
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-14 22:23. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Where and how does the indicator show?: the search icon at the left of the field turns into a small spinning ring while the search runs
+2. Does the Android TV app get the same indicator in this task?: yes, a small ring at the right end of the search field in `SearchScreen.kt`, with the Android build as proof
+
 ## Stages
 
 ### STAGE: PLAN
@@ -154,34 +161,257 @@ OUTPUT:
     continue-watched.md
     search-recent.md
 
+### EVIDENCE: PLAN 2026-11-14T21:15:10.530Z
+COMMAND: git status --short
+EXIT: 0
+OUTPUT:
+    (Bash completed with no output)
+
 ### 1. PLAN — ok
 A small spinning ring takes the place of the search icon in the search box while the app waits for the server.
 Files: .dispatch/plans/add-loading-indicator-when-search-is.md
 Blockers: Where and how does the indicator show?; Does the Android TV app get the same indicator in this task?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-14T21:23:58.689Z
+COMMAND: git status --short && git log --oneline -1 && git diff --stat HEAD -- renderer android
+EXIT: 0
+OUTPUT:
+     M .dispatch/add-loading-indicator-when-search-is.session
+     M .dispatch/add-loading-indicator-when-search-is.state
+     M .dispatch/logs/add-loading-indicator-when-search-is.md
+     M .dispatch/plans/add-loading-indicator-when-search-is.md
+    c4f0748 Dispatch: 2 task files
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
-Blockers: none
+### EVIDENCE: WORK 2026-11-14T21:26:16.928Z
+COMMAND: node --check renderer/js/search.js; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    exit=0
+
+### EVIDENCE: WORK 2026-11-14T21:26:17.525Z
+COMMAND: git diff -- renderer android
+EXIT: 0
+OUTPUT:
+    +      this.busy(false);
+           for (const k of Object.keys(r)) r[k] = this.app.allow(r[k]);
+           this.results = r;
+           if (r.movie.length + r.show.length + r.episode.length) this.remember(q);
+    diff --git a/renderer/styles.css b/renderer/styles.css
+    index b1df1ac..5e689a1 100644
+    --- a/renderer/styles.css
+    +++ b/renderer/styles.css
+    @@ -368,8 +368,10 @@ body.bare #rail { display: none; }
+     #palette { position: fixed; inset: 0; background: rgba(0,0,0,.72); z-index: 70; display: none; }
+     #palette.on { display: block; }
+     .pal { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); width: 680px; max-height: calc(100% - 120px); display: flex; flex-direction: column; background: var(--bg2); border: 1px …
+    -.pal-input { height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--line); color: var(--accent); flex: none; }
+    +.pal-input { position: relative; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--line); color: var(--accent); flex: none; }
+     .pal-input input { flex: 1; background: none; border: 0; outline: none; color: var(--text); font: inherit; font-size: 18px; font-weight: 500; }
+    +.pal-input.busy > .icon { visibility: hidden; }
+    +.pal-input.busy::before { content: ''; position: absolute; left: 18px; top: calc(50% - 10px); width: 20px; height: 20px; box-sizing: border-box; border: 2px solid rgba(255,255,255,.12); border-top-co…
+     .pal-tabs { padding: 12px 18px 4px; flex: none; }
+     .pal-res { overflow-y: auto; padding: 6px 10px 10px; flex: 1; min-height: 60px; }
+     .pal-head { padding: 12px 8px 6px; }
+
+### EVIDENCE: WORK 2026-11-14T21:26:27.517Z
+COMMAND: git config --get core.autocrlf; for f in renderer/js/search.js renderer/styles.css android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt; do printf '%s lines=%s crlf=%s\n' "$f" "$(wc -l < "$f")" "$(grep -c $'\r$' "$f")"; done; git show HEAD:renderer/styles.css | grep -c $'\r$'
+EXIT: 0
+OUTPUT:
+    true
+    renderer/js/search.js lines=201 crlf=201
+    renderer/styles.css lines=522 crlf=522
+    android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt lines=147 crlf=147
+    0
+
+### EVIDENCE: WORK 2026-11-14T21:26:32.007Z
+COMMAND: node --check renderer/js/search.js; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    exit=0
+
+### EVIDENCE: WORK 2026-11-14T21:26:32.807Z
+COMMAND: cd /d/dev_projects/buffer-zone/webos && node build.js
+EXIT: 0
+OUTPUT:
+    Create com.dkrb56.bufferzone_0.2.8_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+
+### EVIDENCE: WORK 2026-11-14T21:26:38.952Z
+COMMAND: cd /d/dev_projects/buffer-zone && ls -l dist/com.dkrb56.bufferzone_0.2.8_all.ipk && grep -n "pal-input" webos/build/app/styles.css | head -10 && grep -n "busy" webos/build/app/js/search.js
+EXIT: 0
+OUTPUT:
+    -rw-r--r-- 1 dani 197121 269596 Nov 14 22:26 dist/com.dkrb56.bufferzone_0.2.8_all.ipk
+    371:.pal-input { position: relative; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--line); color: var(--accent); flex: none; }
+    372:.pal-input input { flex: 1; background: none; border: 0; outline: none; color: var(--text); font: inherit; font-size: 18px; font-weight: 500; }
+    373:.pal-input.busy > .icon { visibility: hidden; }
+    374:.pal-input.busy::before { content: ''; position: absolute; left: 18px; top: calc(50% - 10px); width: 20px; height: 20px; box-sizing: border-box; border: 2px solid rgba(255,255,255,.12); border-top…
+    391:.pal-key:hover, .pal-input .kbd:hover { color: var(--text); background: var(--bg3); }
+    392:.pal-input .kbd { background: none; font-family: inherit; }
+    564:.no-flexgap .pal-input > * + * { margin-left: 12px; }
+    53:    busy(on) {
+    54:      this.inputRow.classList.toggle("busy", on);
+    55:      this.resEl.setAttribute("aria-busy", on ? "true" : "false");
+    62:        this.busy(false);
+    66:      this.busy(true);
+    69:      this.busy(false);
+
+### EVIDENCE: WORK 2026-11-14T21:26:45.278Z
+COMMAND: node scripts/build-all.js
+EXIT: 0
+OUTPUT:
+    Command running in background with ID: bc2vaym3o. Output is being written to: C:\Users\dani\AppData\Local\Temp\claude\24e98aa09f2c58d6\7a86a6ff-5c42-4275-a42c-f57ba57bdb2e\tasks\bc2vaym3o.output. You …
+
+### EVIDENCE: WORK 2026-11-14T21:29:05.951Z
+COMMAND: tail -n 40 "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/7a86a6ff-5c42-4275-a42c-f57ba57bdb2e/tasks/bc2vaym3o.output"; echo ----; grep -n -E "BUILD SUCCESSFUL|BUILD FAILED|^== |error|warning: " "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/7a86a6ff-5c42-4275-a42c-f57ba57bdb2e/tasks/bc2vaym3o.output" | head -40
+EXIT: 0
+OUTPUT:
+    
+    == LG webOS
+    
+    Create com.dkrb56.bufferzone_0.2.8_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+    BufferZone-0.2.8-setup.exe  122.0 MB
+    BufferZone-0.2.8-setup.exe.blockmap  0.1 MB
+    latest.yml  0.0 MB
+    BufferZone-0.2.8-portable.exe  108.0 MB
+    BufferZone-tv-0.2.8.apk  20.6 MB
+    com.dkrb56.bufferzone_0.2.8_all.ipk  0.3 MB
+    
+    [exited with code 0]
+    ----
+    2:== Buffer Zone 0.2.8: Windows
+    23:== Android TV
+    68:BUILD SUCCESSFUL in 25s
+    72:== LG webOS
+
+### EVIDENCE: WORK 2026-11-14T21:29:10.056Z
+COMMAND: grep -n -E "^w: |^e: " "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/7a86a6ff-5c42-4275-a42c-f57ba57bdb2e/tasks/bc2vaym3o.output" | head; echo "----"; cd /d/dev_projects/buffer-zone && git status --short
+EXIT: 0
+OUTPUT:
+    ----
+     M .dispatch/add-loading-indicator-when-search-is.session
+     M .dispatch/add-loading-indicator-when-search-is.state
+     M .dispatch/logs/add-loading-indicator-when-search-is.md
+     M .dispatch/plans/add-loading-indicator-when-search-is.md
+     M android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
+     M renderer/js/search.js
+     M renderer/styles.css
+
+### EVIDENCE: WORK 2026-11-14T21:29:15.336Z
+COMMAND: git add renderer/js/search.js renderer/styles.css android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt && git commit -q -m "add-loading-indicator-when-search-is: spinning ring in the search box while a search runs
+    
+    Desktop and webOS: the search icon turns into a small ring until the newest
+    answer is drawn; a request counter ignores older answers.
+    Android TV: a small ring at the right end of the search field." && git log --oneline -1 && git show --stat --oneline HEAD | tail -4 && git status --short && date '+%Y-%m-%d %H:%M'
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'renderer/styles.css', LF will be replaced by CRLF the next time Git touches it
+    5b7c37a add-loading-indicator-when-search-is: spinning ring in the search box while a search runs
+     .../src/main/java/com/dkrb56/bufferzone/SearchScreen.kt  |  7 ++++++-
+     renderer/js/search.js                                    | 16 +++++++++++++---
+     renderer/styles.css                                      |  4 +++-
+     3 files changed, 22 insertions(+), 5 deletions(-)
+     M .dispatch/add-loading-indicator-when-search-is.session
+     M .dispatch/add-loading-indicator-when-search-is.state
+     M .dispatch/logs/add-loading-indicator-when-search-is.md
+     M .dispatch/plans/add-loading-indicator-when-search-is.md
+    2026-11-14 22:29
+
+### EVIDENCE: WORK 2026-11-14T21:29:56.863Z
+COMMAND: ls .dispatch/*.md && head -n 12 .dispatch/search-recent.md
+EXIT: 0
+OUTPUT:
+    .dispatch/continue-watched.md
+    .dispatch/search-recent.md
+    state: done
+    needs: nothing
+    files: renderer/js/search.js, renderer/styles.css
+    plan: .dispatch/plans/search-recent.md
+    
+    # search-recent: recent searches in the empty search dialog
+    
+    Finished 2026-11-14 21:46 CEST. Commit `936bdb4` on `main`, not pushed.
+    
+    ## What changed
+    - The search dialog now shows "Recent searches" when the field is empty. Each recent search is a row like a result row.
+    - The arrows move between the rows. Enter, a mouse click or the TV OK key puts the words into the field and runs the search again. The dialog stays open.
+
+### 2. WORK — blocked
+Finished 2026-11-14 22:29 CET. Commit `5b7c37a` on `main`, not pushed.
+Files: renderer/js/search.js, renderer/styles.css, android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
+Blockers: 1. Add the guards against late answers from older searches?
 
 ## What changed
-none
+- Windows and TV: while the app waits for the server, the search icon at the left of the field is a small spinning ring. When the results show, the search icon comes back.
+- Windows and TV: only the answer to the newest search switches the ring off. An older answer is ignored, also when the same words were typed again.
+- Windows and TV: an error switches the ring off too, and the dialog shows "No results." as before.
+- Windows and TV: when the text gets shorter than 2 characters, the ring goes off at once.
+- Android TV: a small spinning ring shows at the right end of the search field while a search runs.
+- The keys, the footer, the tabs, the recent searches and the Plex request did not change.
 
 ## Why
-none
+- The brief asks for a sign that a search runs, from the request until the results show, also after an error.
+- The search icon is where the user looks while typing. The ring is drawn with CSS only, so the TV remote finds no new control.
+- A counter of search requests replaces the old check of the query text. The old check let an older answer for the same words through.
 
 ## Files
-none
+- `renderer/js/search.js`: a request counter in `open()`, a reference to the input row, a new method `busy(on)`, and the busy calls and the counter check in `search()`.
+- `renderer/styles.css`: `.pal-input` gets `position: relative`. Two new rules hide the search icon and draw the ring while the row has the class `busy`.
+- `android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt`: a `searching` state, set in the search effect, and a `trailingIcon` that shows a 20 dp ring while it is true.
+- The commit has only these three files. The `.dispatch/` files are for Dispatch to commit.
 
 ## Verification
-none
+- `git status --short && git log --oneline -1 && git diff --stat HEAD -- renderer android`: before the edits, no changes in `renderer/` or `android/`; only Dispatch's own files were changed.
+evidence: yes
+- `node --check renderer/js/search.js; echo "exit=$?"`: printed `exit=0`. I ran it after the edits and again after a one-space fix in the same file.
+evidence: yes
+- `git diff -- renderer android`: showed only the planned changes in the three files.
+evidence: yes
+- `git config --get core.autocrlf; for f in renderer/js/search.js renderer/styles.css android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt; do printf '%s lines=%s crlf=%s\n' "$f" "$(wc -l < "$f")" "$(grep -c $'\r$' "$f")"; done; git show HEAD:renderer/styles.css | grep -c $'\r$'`: `autocrlf` is `true`, and each edited file has CRLF on every line. The edits did not mix line endings. The git warning about LF and CRLF is the normal autocrlf notice.
+evidence: yes
+- `node build.js` (in `webos/`): printed `Create com.dkrb56.bufferzone_0.2.8_all.ipk to D:\dev_projects\buffer-zone\dist` and `Success`.
+evidence: yes
+- `ls -l dist/com.dkrb56.bufferzone_0.2.8_all.ipk && grep -n "pal-input" webos/build/app/styles.css | head -10 && grep -n "busy" webos/build/app/js/search.js`: the ipk exists. The TV build has both ring rules unchanged and the `.no-flexgap .pal-input > * + *` fallback. The lowered TV script has `busy()` and its three calls.
+evidence: yes
+- `node scripts/build-all.js`: ended with exit code 0. Android printed `BUILD SUCCESSFUL in 25s`, and `compileDebugKotlin` ran again for the changed file. The webOS step printed `Success`. The file list showed all six files in `dist/`.
+evidence: yes
+- `tail -n 40 "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/7a86a6ff-5c42-4275-a42c-f57ba57bdb2e/tasks/bc2vaym3o.output"; echo ----; grep -n -E "BUILD SUCCESSFUL|BUILD FAILED|^== |error|warning: " "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/7a86a6ff-5c42-4275-a42c-f57ba57bdb2e/tasks/bc2vaym3o.output" | head -40`: showed the three build steps, `BUILD SUCCESSFUL`, and no `BUILD FAILED` line.
+evidence: yes
+- `grep -n -E "^w: |^e: " "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/7a86a6ff-5c42-4275-a42c-f57ba57bdb2e/tasks/bc2vaym3o.output" | head; echo "----"; cd /d/dev_projects/buffer-zone && git status --short`: no Kotlin warning and no Kotlin error. Before the commit, only the three code files and Dispatch's own files were changed.
+evidence: yes
+
+What nobody tried:
+- Nobody started the app on Windows, on an LG TV or on Android TV. Nobody saw the ring.
+- Nobody tested a slow server, typing fast, or a network that is off.
+- Nobody tested an older TV without flex gap, or the search in the Multi-view picker.
+- Nobody tested a screen reader with the new `aria-busy` state.
+
+Manual tests for the tester:
+- Windows: press Ctrl+F and type a title. While the app waits, the search icon is a spinning ring. When the rows show, the search icon is back.
+- Windows: type fast and change the words a few times. The ring stays on until the rows for the last words show.
+- Windows: delete the text down to 1 character. The ring goes off at once, and "Type at least 2 characters." shows.
+- Windows: switch the network off and search. The ring goes off when "No results." shows.
+- Windows: open a recent search from the empty dialog. The ring shows while that search runs.
+- TV: open the search and type with the remote keyboard. The same ring shows and goes away. Down from the field goes to the tabs, then to the rows. OK opens a title, and Back closes the dialog.
+- Android TV: open Search and type a title. A small ring shows at the right end of the field until the results show. It also goes off when nothing is found or the network is off.
+
+Deviations from the plan:
+- The ring is centered on the row height (`top: calc(50% - 10px)`), not at a fixed 20 px. It is 19.5 px from the top, the same place as the icon.
+- On Android, the icon slot at the right end of the field is always there and stays empty when no search runs. The text area is about 48 dp narrower, but the field does not jump when the ring shows.
 
 ## Follow-ups
-none
+- Android, older than this task: when the user types again, the cancelled search still writes its result as an empty list. "No results." can flash while typing fast. The cause is the same as in question 1. This task did not fix it.
+- No reduced-motion rule for the ring. The big `.spinner` has none either, as the plan says.
+- `dist/` now has builds with this change under the old version 0.2.8. Do not publish them as 0.2.8. Installed Windows apps update only to a higher version. Increase the version in `package.json` and build again before the release, as your rule in `.claude/memory.md` says.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
-| claude-fable-5-1 | 258 | 138932 | 767405 | 22740 | 929335 |
+| claude-fable-5-1 | 322 | 144134 | 1053231 | 23404 | 1221091 |
+| claude-opus-5-5 | 37 | 406716 | 4237187 | 21938 | 4665878 |

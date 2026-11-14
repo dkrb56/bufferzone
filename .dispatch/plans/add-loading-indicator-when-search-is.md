@@ -83,3 +83,10 @@ From the moment the search request leaves until the results stand in the list, t
 
 ## Size
 2 files: `renderer/js/search.js` (about 12 changed or added lines), `renderer/styles.css` (3 lines). With Decision 2 a third: `android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt` (about 6 lines).
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-14 22:23. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Where and how does the indicator show?: the search icon at the left of the field turns into a small spinning ring while the search runs
+2. Does the Android TV app get the same indicator in this task?: yes, a small ring at the right end of the search field in `SearchScreen.kt`, with the Android build as proof
