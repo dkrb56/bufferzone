@@ -2,3 +2,5 @@
 {"op":"open","id":"add-loading-indicator-when-search-is","ts":"2026-11-14T20:45:55.389Z","title":"Add loading indicator when search is executing in the search box -…","type":"feature","summary":"add loading indicator when search is executing in the search box - until data is retrieved","tags":[],"status":"triage","order":null}
 {"op":"status","ref":"add-loading-indicator-when-search-is","ts":"2026-11-14T21:08:48.540Z","status":"todo","order":1}
 {"op":"status","ref":"make-windows-installer","ts":"2026-11-14T21:08:49.797Z","status":"todo","order":2}
+{"op":"update","ref":"add-loading-indicator-when-search-is","ts":"2026-11-14T21:09:05.025Z","title":"loading indicator in the search dialog while a search runs"}
+{"op":"status","ref":"add-loading-indicator-when-search-is","ts":"2026-11-14T21:09:05.025Z","status":"in_progress","order":null}
