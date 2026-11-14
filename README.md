@@ -48,6 +48,7 @@ First start: click **Sign in with Plex**. Your browser opens plex.tv. Sign in th
 | M | Mute |
 | S | Skip intro / credits |
 | N | Next episode |
+| D | Show or hide the playback stats |
 | Esc | Leave fullscreen, then leave the player |
 
 ## Android TV

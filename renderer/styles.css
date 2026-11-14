@@ -490,6 +490,10 @@ body.bare #rail { display: none; }
 .player-error.on { display: flex; }
 .err-title { font-size: 22px; font-weight: 600; }
 .err-msg { color: var(--muted); max-width: 600px; }
+/* Playback stats (key D): under the title area, above the error screen; takes no clicks and no focus. */
+.p-stats { position: absolute; left: 22px; top: 150px; z-index: 7; pointer-events: none; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; max-width: 560px; padding: 10px 14px; border-radius: 10px; background: rgba(0,0,0,.75); color: #fff; font-size: 13px; line-height: 1.35; font-variant-numeric: tabular-nums; }
+.p-stats .k { color: var(--muted); font-weight: 600; }
+.p-stats .v { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- multi-view ---------- */
 #multiview { position: fixed; inset: 0; background: var(--bg0); z-index: 45; display: none; flex-direction: column; }
@@ -504,7 +508,7 @@ body.bare #rail { display: none; }
 .tile { position: relative; background: #000; border-radius: 8px; overflow: hidden; border: 2px solid transparent; cursor: pointer; min-height: 0; }
 .tile.audio { border-color: var(--accent); }
 .tile .vp { position: absolute; inset: 0; cursor: pointer; }
-.tile .p-controls, .tile .skip-btn, .tile .next-card, .tile .p-pop { display: none !important; }
+.tile .p-controls, .tile .skip-btn, .tile .next-card, .tile .p-pop, .tile .p-stats { display: none !important; }
 .tile-badge { position: absolute; top: 10px; right: 10px; z-index: 4; color: var(--muted); }
 .tile-info { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; padding: 30px 12px 10px; background: linear-gradient(transparent, rgba(0,0,0,.85)); }
 .tile-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }

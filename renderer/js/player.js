@@ -1,7 +1,7 @@
 // Video player: direct play or HLS from the Plex transcoder, track selection,
 // styled subtitles, skip intro/credits, auto-play next episode, watch tracking.
 (function () {
-  const { h, fmtTime, fmtDuration, epCode, toast, pill, Subtitles, icon } = window.Sofa;
+  const { h, fmtTime, fmtDuration, epCode, toast, pill, Subtitles, icon, PlayerStats } = window.Sofa;
 
   const QUALITY = [
     { id: 'direct', label: 'Direct Play (original file)', short: 'Direct' },
@@ -133,13 +133,14 @@
 
       this.root.append(this.video, this.subEl, this.spinner, this.errorBox, this.skipBtn, this.nextCard, this.controls, this.pop);
       this.overlay = new Subtitles.SubtitleOverlay(this.subEl, () => this.time());
+      this.stats = new PlayerStats(this);
 
       const v = this.video;
       v.addEventListener('timeupdate', () => this.onTick());
       v.addEventListener('play', () => { this.updateUi(); this.report('playing'); });
       v.addEventListener('pause', () => { this.updateUi(); this.report('paused'); });
-      v.addEventListener('waiting', () => this.spinner.classList.add('on'));
-      v.addEventListener('playing', () => this.spinner.classList.remove('on'));
+      v.addEventListener('waiting', () => { this.spinner.classList.add('on'); this.stats.stallBegin(); });
+      v.addEventListener('playing', () => { this.spinner.classList.remove('on'); this.stats.stallEnd(); });
       v.addEventListener('canplay', () => this.spinner.classList.remove('on'));
       v.addEventListener('ended', () => this.onEnded());
       v.addEventListener('error', () => this.onVideoError());
@@ -177,6 +178,8 @@
       this.overlay.clear();
       this.overlay.start();
       this.poke();
+      this.stats.reset();
+      if (this.settings.debugOverlay) this.stats.on(); else this.stats.off();
 
       try {
         const meta = await this.plex.metadata(item.ratingKey);
@@ -373,6 +376,7 @@
       // segments before the offset are empty, so playback must start at the offset.
       const hls = new Hls({ maxBufferLength: 60, backBufferLength: 60, enableWebVTT: true, renderTextTracksNatively: false, startPosition: this.offset });
       this.hls = hls;
+      this.stats.attach(hls);
       this.hlsRecovered = false;
       hls.on(Hls.Events.ERROR, (_e, data) => this.onHlsError(data));
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_e, d) => {
@@ -430,6 +434,8 @@
 
     onHlsError(data) {
       sofa.log('hls error', { type: data.type, details: data.details, fatal: data.fatal, code: data.response?.code, sn: data.frag?.sn, reason: data.reason, error: String(data.error?.message || '') });
+      const code = data.response?.code;
+      this.stats.error([data.details, code && `HTTP ${code}`, data.frag?.sn != null && `segment #${data.frag.sn}`, data.fatal && 'fatal'].filter(Boolean).join(' · '), code);
       if (!data.fatal) return;
       if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !this.hlsRecovered) {
         this.hlsRecovered = true;
@@ -443,6 +449,7 @@
         this.restarts = (this.restarts || []).filter(t => now - t < 60000);
         if (this.restarts.length < 2) {
           this.restarts.push(now);
+          this.stats.restart();
           sofa.log('hls session gone, restarting at', Math.round(this.time()));
           return this.seekTo(this.time() + 0.01, { restart: true });
         }
@@ -458,12 +465,16 @@
       const err = this.video.error;
       if (!err || !this.meta) return;
       if (this.mode === 'direct') return this.fallbackToHls(`direct play error ${err.code}`);
-      if (this.nativeHls) return this.onHlsError({ type: 'networkError', details: `video error ${err.code}`, fatal: true, response: { code: 404 } });
+      const text = `video error ${err.code}${err.message ? `: ${err.message}` : ''}`;
+      // The TV player gives no HTTP code; the 404 below only selects the restart, so the stats keep the video error.
+      if (this.nativeHls) { this.onHlsError({ type: 'networkError', details: `video error ${err.code}`, fatal: true, response: { code: 404 } }); return this.stats.error(text); }
+      this.stats.error(text);
       if (!this.hls) this.fail(new Error(`Video error ${err.code}: ${err.message || ''}`));
     }
 
     fallbackToHls(reason) {
       sofa.log('fallback to hls:', reason);
+      this.stats.error(`fallback to converted: ${reason}`);
       toast('This file cannot play directly. Switching to a converted stream.');
       const t = this.video.currentTime || 0;
       this.forceHls = true;
@@ -472,6 +483,7 @@
 
     fail(err) {
       sofa.log('player error', String(err?.message || err));
+      this.stats.error(`playback failed: ${err?.message || err}`);
       this.spinner.classList.remove('on');
       this.errorBox.replaceChildren(
         h('div.err-title', 'Playback failed'),
@@ -558,6 +570,7 @@
     exit() {
       const meta = this.meta;
       this.closePop();
+      this.stats.off();
       this.stopInternal();
       this.meta = null;
       if (this.tile) return;
@@ -591,6 +604,7 @@
       }
       // Outside the buffer: restart the transcode at the new position.
       this.spinner.classList.add('on');
+      if (!restart) this.stats.expectWait();
       this.destroyStream();
       this.startHls(t, this.subMode).then(() => this.video.play().catch(() => {})).catch(e => this.fail(e));
     }
@@ -608,7 +622,8 @@
       this.timer = setInterval(() => {
         this.report(this.video.paused ? 'paused' : 'playing');
         if (this.mode === 'hls' && this.transcodeSession && ++tick % 3 === 0) {
-          this.plex.get('/video/:/transcode/universal/ping', { session: this.transcodeSession }).catch(() => {});
+          this.plex.get('/video/:/transcode/universal/ping', { session: this.transcodeSession })
+            .then(() => this.stats.ping(200), (e) => this.stats.ping(e?.status || 0));
         }
       }, 10000);
     }
@@ -780,7 +795,8 @@
         this.root.classList.add('tracks-open');
       } else if (kind === 'quality') {
         body = h('div.qmenu', h('div.eyebrow', 'Quality'),
-          QUALITY.map(q => item('t-item', q.id === this.quality, q.label, null, () => this.changeQuality(q.id))));
+          QUALITY.map(q => item('t-item', q.id === this.quality, q.label, null, () => this.changeQuality(q.id))),
+          item('t-item', this.stats.isOn, 'Playback stats', 'Buffer, segments, errors (D)', () => this.toggleStats()));
       } else {
         const season = (this.leaves || []).filter(l => l.parentRatingKey === this.meta.parentRatingKey);
         body = h('div.eps-panel', h('div.eyebrow', this.meta.parentTitle || 'Episodes'),
@@ -828,6 +844,13 @@
       if (sofa.tv) return this.load(this.time());
       this.applyBoost();
       this.updateUi();
+    }
+
+    // Playback stats box (settings.debugOverlay): key D or Quality → Playback stats. The choice stays after a restart.
+    toggleStats() {
+      const on = !this.stats.isOn;
+      this.app.saveSettings({ debugOverlay: on });
+      if (on) this.stats.on(); else this.stats.off();
     }
 
     togglePip() {
@@ -935,7 +958,7 @@
         arrowup: () => { this.video.volume = Math.min(1, this.video.volume + 0.05); },
         arrowdown: () => { this.video.volume = Math.max(0, this.video.volume - 0.05); },
         f: () => sofa.fullscreen(), m: () => { this.video.muted = !this.video.muted; },
-        n: () => this.playNext(), s: () => this.doSkip(),
+        n: () => this.playNext(), s: () => this.doSkip(), d: () => this.toggleStats(),
         escape: () => {
           if (this.pop.classList.contains('on')) return this.closePop();
           if (!sofa.tv && window.innerHeight === screen.height && window.innerWidth === screen.width) sofa.fullscreen(false);

@@ -14,6 +14,7 @@ label.switch:focus { outline-offset: 4px; border-radius: 12px; }
 .kbd, .pal-foot, .home-left .sec-head .muted { display: none; }
 .cw-row.sel:not(:focus) { background: none; }
 .p-btn[title^="Fullscreen"] { display: none; }
+.p-stats { font-size: 17px; max-width: 760px; }   /* readable from the couch: the shim zooms by 1.5 */
 
 /* ---------- sign-in with plex.tv/link ---------- */
 .link-url { font-size: 22px; font-weight: 700; color: var(--accent); margin: 4px 0 18px; }
