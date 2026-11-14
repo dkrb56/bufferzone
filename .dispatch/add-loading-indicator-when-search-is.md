@@ -77,7 +77,7 @@ git rebase -i --autosquash c4f0748
 ```
 
 ## Follow-ups
-- Android, older than this task: when the user types again, the cancelled search still writes its result as an empty list. "No results." can flash while typing fast. The cause is the same as in question 1. This task did not fix it.
+- Android, older than this task: when the user types again, the cancelled search still writes its result as an empty list. "No results." can flash while typing fast. The cause is the cancel that `runCatching` catches. The new guard protects only the ring. This task did not fix the list.
 - No reduced-motion rule for the ring. The big `.spinner` has none either, as the plan says.
 - `dist/` now has builds with this change under the old version 0.2.8. Do not publish them as 0.2.8. Installed Windows apps update only to a higher version. Increase the version in `package.json` and build again before the release, as your rule in `.claude/memory.md` says.
 
