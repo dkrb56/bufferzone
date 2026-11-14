@@ -310,28 +310,334 @@ Files: .dispatch/plans/pause-resumes-after-restart.md
 Blockers: Does a seek while paused keep the pause, like the automatic restart?; Does the Android TV app get the same fix in this task?; Where does the check script live?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-14T23:04:59.718Z
+COMMAND: git status --short && git log --oneline -3 && node --version && date -u +"%Y-%m-%d %H:%M UTC"
+EXIT: 0
+OUTPUT:
+     M .dispatch/pause-resumes-after-restart.session
+     M .dispatch/pause-resumes-after-restart.state
+    f7c0275 Dispatch: 7 task files
+    23efce8 player-debug-overlay: playback stats box in the player (key D, Quality menu)
+    3c102b7 Dispatch: 2 task files
+    v24.12.0
+    2026-11-14 23:05 UTC
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-14T23:05:01.564Z
+COMMAND: LOG="/c/Users/dani/AppData/Roaming/Buffer Zone/buffer-zone.log"; ls -la "$LOG"; echo "== restarts (last 12)"; grep -n "hls session gone" "$LOG" | tail -12 | cut -c1-200; echo "== context of the last restart"; n=$(grep -n "hls session gone" "$LOG" | tail -1 | cut -d: -f1); [ -n "$n" ] && sed -n "$((n-12)),$((n+4))p" "$LOG" | cut -c1-240
+EXIT: 0
+OUTPUT:
+    9328:[2026-11-14T22:46:13.884Z] [renderer] hls session gone, restarting at 1052
+    9339:[2026-11-14T22:46:50.831Z] [renderer] hls session gone, restarting at 1054
+    == context of the last restart
+    [2026-11-14T22:46:13.884Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":true,"code":404,"sn":219,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:13.884Z] [renderer] hls session gone, restarting at 1052
+    [2026-11-14T22:46:13.970Z] http GET http://plex.v12.appboxmanager.xyz:80/video/:/transcode/universal/stop?session=d0361323-7c8c-4962-9c0f-27df8ff8d85e&X-Plex-Token=*** 404
+    [2026-11-14T22:46:14.168Z] [renderer] decision {"general":"Direct play not available; Conversion OK.","transcode":"Direct play not available; Conversion OK.","streams":[{"t":1,"codec":"h264","decision…
+    [2026-11-14T22:46:19.167Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":false,"code":404,"sn":216,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:20.348Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":false,"code":404,"sn":216,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:21.725Z] http GET http://plex.v12.appboxmanager.xyz:80/video/:/transcode/universal/ping?session=61b8ee9f-a4d8-49d7-ad7f-8a1976fd6d0c 404
+    [2026-11-14T22:46:22.456Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":false,"code":404,"sn":216,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:26.553Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":false,"code":404,"sn":216,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:34.633Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":false,"code":404,"sn":216,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:42.741Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":false,"code":404,"sn":216,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:50.830Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":true,"code":404,"sn":216,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:50.831Z] [renderer] hls session gone, restarting at 1054
+    [2026-11-14T22:46:51.116Z] http GET http://plex.v12.appboxmanager.xyz:80/video/:/transcode/universal/stop?session=61b8ee9f-a4d8-49d7-ad7f-8a1976fd6d0c&X-Plex-Token=*** 404
+    [2026-11-14T22:46:51.127Z] [renderer] decision {"general":"Direct play not available; Conversion OK.","transcode":"Direct play not available; Conversion OK.","streams":[{"t":1,"codec":"h264","decision…
+    [2026-11-14T22:46:52.476Z] [renderer] hls error {"type":"networkError","details":"fragLoadError","fatal":false,"code":404,"sn":211,"error":"HTTP Error 404 Not Found"}
+    [2026-11-14T22:46:53.534Z] [renderer] hls error {"type":"mediaError","details":"bufferStalledError","fatal":false,"error":"Playback stalling at @1055.002744 due to low buffer ({\"len\":0.0132560000001…
+
+### EVIDENCE: WORK 2026-11-14T23:05:07.864Z
+COMMAND: git show --stat 23efce8 | head -20 && git diff b4c6e34 HEAD -- renderer/js/player.js android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt | head -200
+EXIT: 0
+OUTPUT:
+     
+    +    // Playback stats box (settings.debugOverlay): key D or Quality → Playback stats. The choice stays after a restart.
+    +    toggleStats() {
+    +      const on = !this.stats.isOn;
+    +      this.app.saveSettings({ debugOverlay: on });
+    +      if (on) this.stats.on(); else this.stats.off();
+    +    }
+    +
+         togglePip() {
+           if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
+           else this.video.requestPictureInPicture().catch(() => toast('Picture in picture is not available.'));
+    @@ -935,7 +958,7 @@
+             arrowup: () => { this.video.volume = Math.min(1, this.video.volume + 0.05); },
+             arrowdown: () => { this.video.volume = Math.max(0, this.video.volume - 0.05); },
+             f: () => sofa.fullscreen(), m: () => { this.video.muted = !this.video.muted; },
+    -        n: () => this.playNext(), s: () => this.doSkip(),
+    +        n: () => this.playNext(), s: () => this.doSkip(), d: () => this.toggleStats(),
+             escape: () => {
+               if (this.pop.classList.contains('on')) return this.closePop();
+               if (!sofa.tv && window.innerHeight === screen.height && window.innerWidth === screen.width) sofa.fullscreen(false);
+
+### EVIDENCE: WORK 2026-11-14T23:05:12.821Z
+COMMAND: grep -n "await this.load(startAt)\|async load(startAt)\|this.destroyStream();\|this.video.play().catch\|seekTo(t, { restart\|this.load(" renderer/js/player.js && sed -n 160,170p renderer/js/player.js && sed -n 276,282p renderer/js/player.js && sed -n 310,320p renderer/js/player.js && sed -n 596,612p renderer/js/player.js
+EXIT: 0
+OUTPUT:
+        hlsParams(offset, subMode) {
+          const q = QUALITY.find(x => x.id === this.quality) || QUALITY[1];
+          const boost = sofa.tv && !this.tile ? (this.settings.audioBoost || 100) : 100;
+    
+        // `restart` starts a new transcode session even when `t` is already buffered.
+        seekTo(t, { restart = false } = {}) {
+          t = Math.max(0, Math.min(this.duration - 1, t));
+          if (this.mode === 'direct') { this.video.currentTime = t; return; }
+          const b = this.video.buffered;
+          for (let i = 0; !restart && i < b.length; i++) {
+            if (t >= b.start(i) && t <= b.end(i)) { this.video.currentTime = t; return; }
+          }
+          // Outside the buffer: restart the transcode at the new position.
+          this.spinner.classList.add('on');
+          if (!restart) this.stats.expectWait();
+          this.destroyStream();
+          this.startHls(t, this.subMode).then(() => this.video.play().catch(() => {})).catch(e => this.fail(e));
+        }
+    
+        togglePlay() {
+
+### EVIDENCE: WORK 2026-11-14T23:06:30.841Z
+COMMAND: node /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/check-player-pause.js renderer/js/player.js; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    player: D:\dev_projects\buffer-zone\renderer\js\player.js
+    ┌─────────┬──────────────────────────────┬─────────────┬─────────────┬────────────────────┬───────────────┬────────────────┬─────────────────────┐
+    │ (index) │ scenario                     │ user paused │ new session │ play() calls after │ paused at end │ timeline state │ ping to new session │
+    ├─────────┼──────────────────────────────┼─────────────┼─────────────┼────────────────────┼───────────────┼────────────────┼─────────────────────┤
+    │ 0       │ 'session gone (404) restart' │ true        │ true        │ 1                  │ false         │ 'playing'      │ true                │
+    │ 1       │ 'session gone (404) restart' │ false       │ true        │ 1                  │ false         │ 'playing'      │ true                │
+    │ 2       │ 'quality change'             │ true        │ true        │ 1                  │ false         │ 'playing'      │ true                │
+    │ 3       │ 'seek outside the buffer'    │ true        │ true        │ 1                  │ false         │ 'playing'      │ true                │
+    └─────────┴──────────────────────────────┴─────────────┴─────────────┴────────────────────┴───────────────┴────────────────┴─────────────────────┘
+    log lines "hls session gone": 2
+    KEEP-ALIVE BROKEN: no ping to the new session or wrong timeline state
+    RESUMED WHILE PAUSED: session gone (404) restart; quality change; seek outside the buffer
+    exit=1
+
+### EVIDENCE: WORK 2026-11-14T23:06:47.235Z
+COMMAND: node --check renderer/js/player.js; echo "check exit=$?"; node /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/check-player-pause.js renderer/js/player.js; echo "exit=$?"; git diff --stat
+EXIT: 0
+OUTPUT:
+    check exit=0
+    player: D:\dev_projects\buffer-zone\renderer\js\player.js
+    ┌─────────┬──────────────────────────────┬─────────────┬─────────────┬────────────────────┬───────────────┬────────────────┬─────────────────────┐
+    │ (index) │ scenario                     │ user paused │ new session │ play() calls after │ paused at end │ timeline state │ ping to new session │
+    ├─────────┼──────────────────────────────┼─────────────┼─────────────┼────────────────────┼───────────────┼────────────────┼─────────────────────┤
+    │ 0       │ 'session gone (404) restart' │ true        │ true        │ 0                  │ true          │ 'paused'       │ true                │
+    │ 1       │ 'session gone (404) restart' │ false       │ true        │ 1                  │ false         │ 'playing'      │ true                │
+    │ 2       │ 'quality change'             │ true        │ true        │ 0                  │ true          │ 'paused'       │ true                │
+    │ 3       │ 'seek outside the buffer'    │ true        │ true        │ 0                  │ true          │ 'paused'       │ true                │
+    └─────────┴──────────────────────────────┴─────────────┴─────────────┴────────────────────┴───────────────┴────────────────┴─────────────────────┘
+    log lines "hls session gone": 2
+    OK: every paused scenario stays paused
+    exit=0
+    warning: in the working copy of '.dispatch/pause-resumes-after-restart.session', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/pause-resumes-after-restart.state', LF will be replaced by CRLF the next time Git touches it
+     .dispatch/pause-resumes-after-restart.session |  1 +
+     .dispatch/pause-resumes-after-restart.state   |  2 +-
+     renderer/js/player.js                         | 12 ++++++++----
+     3 files changed, 10 insertions(+), 5 deletions(-)
+
+### EVIDENCE: WORK 2026-11-14T23:06:55.204Z
+COMMAND: grep -n "load(\|playWhenReady" android/app/src/main/java/com/dkrb56/bufferzone/*.kt
+EXIT: 0
+OUTPUT:
+    android/app/src/main/java/com/dkrb56/bufferzone/DetailScreens.kt:143:    Reload(s.key) {
+    android/app/src/main/java/com/dkrb56/bufferzone/LibraryScreen.kt:110:    fun reload(from: Int = 0) { gen++; items.clear(); total = -1; startAt = from; loading = false; scope.launch { more() } }
+    android/app/src/main/java/com/dkrb56/bufferzone/LibraryScreen.kt:115:        reload()
+    android/app/src/main/java/com/dkrb56/bufferzone/LibraryScreen.kt:129:                Focusable({ unwatched = !unwatched; save(); reload() }) { f ->
+    android/app/src/main/java/com/dkrb56/bufferzone/LibraryScreen.kt:182:                            reload(entry.second)
+    android/app/src/main/java/com/dkrb56/bufferzone/LibraryScreen.kt:193:        "sort" -> OptionDialog("Sort", SORTS, sort, { dialog = null }) { sort = it; save(); reload() }
+    android/app/src/main/java/com/dkrb56/bufferzone/LibraryScreen.kt:194:        "genre" -> OptionDialog("Genre", listOf("" to "All genres") + genres, genre, { dialog = null }) { genre = it; save(); reloa…
+    android/app/src/main/java/com/dkrb56/bufferzone/LibraryScreen.kt:219:    Reload(key) {
+    android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt:175:fun Reload(vararg keys: Any?, block: suspend () -> Unit) {
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:136:                load(req.startAt)
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:176:    private suspend fun load(startAt: Double) {
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:214:        player.playWhenReady = true
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:280:        if (is404 && restarts.size < 2) { restarts += now; scope.launch { reload(position) }; return }
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:289:        scope.launch { reload(t) }
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:292:    private suspend fun reload(t: Double) {
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:294:        load(t)
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:309:        scope.launch { reload(t) }
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:322:        } else { forceHls = false; scope.launch { reload(position) } }
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:334:        } else scope.launch { reload(position) }
+    android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt:341:        scope.launch { reload(position) }
+
+### EVIDENCE: WORK 2026-11-14T23:07:06.796Z
+COMMAND: cd /d/dev_projects/buffer-zone/webos && node build.js 2>&1 | tail -15; echo "exit=${PIPESTATUS[0]}"; ls -la ../dist/com.dkrb56.bufferzone_0.2.9_all.ipk
+EXIT: 0
+OUTPUT:
+    Create com.dkrb56.bufferzone_0.2.9_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+    exit=0
+    -rw-r--r-- 1 dani 197121 271746 Nov 15 00:07 ../dist/com.dkrb56.bufferzone_0.2.9_all.ipk
+
+### EVIDENCE: WORK 2026-11-14T23:07:13.291Z
+COMMAND: cd /d/dev_projects/buffer-zone && grep -c "if (!paused)" webos/build/app/js/player.js && grep -n "paused: false\|load(startAt, {" webos/build/app/js/player.js | head -5
+EXIT: 0
+OUTPUT:
+    2
+    229:        await this.load(startAt, { paused: false });
+    281:    async load(startAt, { paused = this.video.paused } = {}) {
+
+### EVIDENCE: WORK 2026-11-14T23:07:15.245Z
+COMMAND: cd /d/dev_projects/buffer-zone && node scripts/build-all.js > /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log 2>&1; echo "exit=$?"; grep -n "^== \|BUILD\|error\|Error\|FAILURE\|MB$\|missing" /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log | grep -v "^.*warning" | tail -30
+EXIT: 0
+OUTPUT:
+    exit=0
+    2:== Buffer Zone 0.2.9: Windows
+    23:== Android TV
+    68:BUILD SUCCESSFUL in 26s
+    72:== LG webOS
+    78:BufferZone-0.2.9-setup.exe  122.0 MB
+    79:BufferZone-0.2.9-setup.exe.blockmap  0.1 MB
+    80:latest.yml  0.0 MB
+    81:BufferZone-0.2.9-portable.exe  108.0 MB
+    82:BufferZone-tv-0.2.9.apk  20.6 MB
+    83:com.dkrb56.bufferzone_0.2.9_all.ipk  0.3 MB
+
+### EVIDENCE: WORK 2026-11-14T23:09:48.828Z
+COMMAND: grep -n "compileDebugKotlin\|w: \|e: " /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log | head -10; sed -n 60,70p /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log
+EXIT: 0
+OUTPUT:
+    57:> Task :app:compileDebugKotlin
+    > Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
+    > Task :app:processDebugJavaRes UP-TO-DATE
+    > Task :app:mergeDebugJavaResource UP-TO-DATE
+    > Task :app:mergeProjectDexDebug
+    > Task :app:packageDebug
+    > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+    > Task :app:assembleDebug
+    
+    BUILD SUCCESSFUL in 26s
+    37 actionable tasks: 4 executed, 33 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+
+### EVIDENCE: WORK 2026-11-14T23:09:52.325Z
+COMMAND: git status --short && git diff -- renderer/js/player.js android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt
+EXIT: 0
+OUTPUT:
+           this.applyBoost();
+    -      this.video.play().catch(() => {});
+    +      if (!paused) this.video.play().catch(() => {});
+           this.startTimers();
+           this.updateUi();
+         }
+    @@ -603,10 +605,12 @@
+             if (t >= b.start(i) && t <= b.end(i)) { this.video.currentTime = t; return; }
+           }
+           // Outside the buffer: restart the transcode at the new position.
+    +      // A paused video stays paused; read it first, because destroyStream() resets `paused` to true.
+    +      const paused = this.video.paused;
+           this.spinner.classList.add('on');
+           if (!restart) this.stats.expectWait();
+           this.destroyStream();
+    -      this.startHls(t, this.subMode).then(() => this.video.play().catch(() => {})).catch(e => this.fail(e));
+    +      this.startHls(t, this.subMode).then(() => { if (!paused) this.video.play().catch(() => {}); }).catch(e => this.fail(e));
+         }
+     
+         togglePlay() {
+
+### EVIDENCE: WORK 2026-11-14T23:10:15.744Z
+COMMAND: git add renderer/js/player.js android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt && git commit -q -F - <<'EOF'
+    pause-resumes-after-restart: a paused video stays paused through a stream restart
+    
+    After the server drops the converted session (log line "hls session
+    gone"), the player rebuilt the stream and always called video.play(),
+    so a paused video started again. The same happened after a quality,
+    audio or subtitle change and a seek outside the buffer.
+    
+    seekTo() and load() now read the paused state before destroyStream()
+    (the media load algorithm resets it) and call play() only when the
+    video was playing. play() of a new title still starts on its own.
+    
+    Android TV: load() takes playWhenReady; reload() passes the current
+    value, so the 404 restart, seeks and track changes keep a pause.
+    EOF
+    git log --oneline -1 && git status --short
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt', LF will be replaced by CRLF the next time Git touches it
+    b7bef44 pause-resumes-after-restart: a paused video stays paused through a stream restart
+     M .dispatch/pause-resumes-after-restart.session
+     M .dispatch/pause-resumes-after-restart.state
+
+### 2. WORK — ok
+A paused video now stays paused when the app rebuilds the stream. Playback starts again only when the user presses Play.
+Files: renderer/js/player.js, android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt
 Blockers: none
 
 ## What changed
-none
+A paused video now stays paused when the app rebuilds the stream. Playback starts again only when the user presses Play.
+
+- Desktop and LG TV (shared `renderer/js/player.js`): the automatic restart after a lost session keeps the pause. A seek outside the buffer, a quality, audio or subtitle change and a direct-play fallback also keep it.
+- A video that plays before the restart plays again after it, as before.
+- A new title, the next episode and the return from the subtitle style page start on their own, as before.
+- Android TV (`Playback.kt`): the same rule. The 404 restart, seeks, track changes and quality changes keep a pause.
+- The timeline report and the session ping continue while paused. They go to the new session after a restart.
+- One local commit on `main`: b7bef44. Nothing was pushed.
 
 ## Why
-none
+Cause, with evidence:
+- The app log shows the loop. From 22:39:42 to 22:46:50 UTC on 2026-11-14 the log has 12 lines `hls session gone, restarting at …`, about every 35 to 40 s. Before each one: six `fragLoadError` 404 on one segment, the ping answers 404, then a fatal 404.
+- The restart path `onHlsError` calls `seekTo(…, { restart: true })`. `seekTo` called `video.play()` when the new stream was ready and did not look at the pause.
+- `load()` also ended with `video.play()` with no check. All quality, audio, subtitle and fallback reloads go through `load()`.
+- `destroyStream()` calls `video.load()`. The media load algorithm sets `paused` to true. So the fix reads the pause before `destroyStream()`.
+- Android: `load()` set `playWhenReady = true` on every reload, also after the 404 restart.
+
+The check script reproduced the fault before the change: each paused scenario got one `play()` call and ended in play.
 
 ## Files
-none
+- `renderer/js/player.js`: `seekTo` reads `video.paused` before `destroyStream()` and calls `play()` only when the video played. `load(startAt, { paused })` takes the state before the reload by default and calls `play()` only when not paused. `play(item)` passes `paused: false`.
+- `android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt`: `load(startAt, playWhenReady)`. `play(req)` passes true. `reload(t)` passes the current `player.playWhenReady`, read before the old session stops.
 
 ## Verification
-none
+- `LOG="/c/Users/dani/AppData/Roaming/Buffer Zone/buffer-zone.log"; ls -la "$LOG"; echo "== restarts (last 12)"; grep -n "hls session gone" "$LOG" | tail -12 | cut -c1-200; echo "== context of the last restart"; n=$(grep -n "hls session gone" "$LOG" | tail -1 | cut -d: -f1); [ -n "$n" ] && sed -n "$((n-12)),$((n+4))p" "$LOG" | cut -c1-240` showed 12 restarts from 22:39:42 to 22:46:50 UTC, each after a fatal `fragLoadError` 404, with a ping 404 before it. The restart position moves only 1 to 20 s between restarts.
+evidence: yes
+- `node /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/check-player-pause.js renderer/js/player.js; echo "exit=$?"` on the unchanged file (reproduction): every paused row showed 1 `play()` call, `paused at end` false and timeline state "playing". The script printed `RESUMED WHILE PAUSED: session gone (404) restart; quality change; seek outside the buffer` and `exit=1`. The ping went to the new session in every row.
+evidence: yes
+- `node --check renderer/js/player.js; echo "check exit=$?"; node /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/check-player-pause.js renderer/js/player.js; echo "exit=$?"; git diff --stat` after the change: `check exit=0`. Session-gone restart while paused: 0 `play()` calls, paused, new session, timeline "paused", ping to the new session. Session-gone restart while playing: 1 call, playing, new session. Quality change while paused: 0 calls. Seek outside the buffer while paused: 0 calls. Last line `OK: every paused scenario stays paused`, `exit=0`.
+evidence: yes
+- `node build.js 2>&1 | tail -15; echo "exit=${PIPESTATUS[0]}"; ls -la ../dist/com.dkrb56.bufferzone_0.2.9_all.ipk` in `webos/`: `Success`, `exit=0`, the ipk exists (271746 bytes).
+evidence: yes
+- `grep -c "if (!paused)" webos/build/app/js/player.js && grep -n "paused: false\|load(startAt, {" webos/build/app/js/player.js | head -5` showed 2 checks and both changed lines in the TV build.
+evidence: yes
+- `node scripts/build-all.js > /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log 2>&1; echo "exit=$?"; grep -n "^== \|BUILD\|error\|Error\|FAILURE\|MB$\|missing" /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log | grep -v "^.*warning" | tail -30` gave `exit=0`, `BUILD SUCCESSFUL` for Android, and all six files in `dist/` (setup exe, blockmap, latest.yml, portable exe, apk, ipk).
+evidence: yes
+- `grep -n "compileDebugKotlin\|w: \|e: " /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log | head -10; sed -n 60,70p /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/build-all.log` showed that the task `:app:compileDebugKotlin` ran (not up to date) with no warning and no error.
+evidence: yes
+- `git status --short && git diff -- renderer/js/player.js android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt` showed only the two code files changed, plus the two Dispatch files of this task.
+evidence: yes
+
+Deviations from the plan:
+- The commit player-debug-overlay (23efce8) came after the plan. It moved the line numbers by 3 to 13 and added a stats object. The three changed spots had the same logic, so the change follows the plan. The check script stubs the stats object.
+- The check script also fires the 10 s timer by hand. It checks the timeline state and the ping to the new session. This proves the keep-alive constraint of the brief. The script stays in the job folder; nothing new is in the repo.
+
+Manual tests for the tester:
+1. Windows: play a title with the `Converted` pill. Press Space to pause. Wait for `hls session gone` in `%APPDATA%/Buffer Zone/buffer-zone.log`; on this server it comes within a minute. Expected: the video stays paused, the spinner goes away, the time does not move. Press Space: it plays from the paused spot.
+2. Windows: pause, then press the right arrow 3 times. Expected: the video stays paused at the new spot and the spinner goes away. Pause, change the quality in the player menu. Expected: the stream reloads and stays paused. Press Space: it plays.
+3. Windows: let the video play and wait for a restart. Expected: it plays again after the spinner, as before.
+4. LG TV: tests 1 to 3 with the PAUSE and PLAY keys of the remote.
+5. Android TV: play a converted title, wait until it plays, pause, change the quality. Expected: it stays paused. Press play: it plays.
+
+What nobody tried:
+- Nobody watched a real stream with the changed app. The check ran on stubs, not in a browser and not on a real server.
+- On the LG TV nobody checked that a playing video plays again after a restart. The TV's own player could report "paused" after an error; the web standard says it does not. If it does, a playing video stays paused after a restart on the TV. Test 4 covers this.
+- Nobody tried Android TV on a device, a restart while Multi-view is open, or a direct-play fallback while paused.
+- Nobody tried Play during the short reload gap (see Follow-ups).
 
 ## Follow-ups
-none
+- The server drops the session every 35 to 40 s. This is the "keeps loading" part of the user's report, and this ticket does not fix it. The new playback stats box (key D) shows it.
+- The restart limit is 2 per minute. A third session loss in 60 s shows "Stream error". Today the drops are just outside that limit.
+- Android TV: `togglePlay` uses `isPlaying`, so pause does nothing while the player buffers. A user cannot pause during the spinner. Not changed.
+- A Play press in the short gap of a reload is lost: the new source resets it. The gap is the decision request, about 0.3 s in the log. The user then presses Play again. Before this change every reload played, so the gap did not matter.
+- Release: `package.json` still says 0.2.9. The full build wrote files named 0.2.9 into `dist/` with this change. Bump the version before you publish; do not upload these files as 0.2.9.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-fable-5-1 | 450 | 175291 | 1747848 | 47664 | 1971253 |
+| claude-opus-5-5 | 30 | 432397 | 3735569 | 17331 | 4185327 |
