@@ -377,6 +377,7 @@ body.bare #rail { display: none; }
 .pal-row.active { background: var(--accent-soft); }
 .pal-row .art { width: 40px; aspect-ratio: 2 / 3; border-radius: 4px; flex: none; }
 .pal-row .art.still { width: 72px; aspect-ratio: 16 / 9; }
+.pal-row .pal-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
 .pal-row .t { font-weight: 600; }
 .pal-row .d { font-size: 12px; color: var(--muted); }
 .pal-row mark { background: none; color: var(--accent); }

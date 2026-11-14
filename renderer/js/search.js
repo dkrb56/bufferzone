@@ -4,6 +4,7 @@
   const { h, icon, debounce, epCode, fmtDuration, highlight } = S;
 
   const TABS = [['all', 'All'], ['show', 'Series'], ['movie', 'Movies'], ['episode', 'Episodes']];
+  const RECENT_MAX = 8;   // recent searches kept in settings.recentSearches, newest first
 
   class Palette {
     constructor(app) {
@@ -56,8 +57,27 @@
       if (q !== this.query || !this.isOpen) return;
       for (const k of Object.keys(r)) r[k] = this.app.allow(r[k]);
       this.results = r;
+      if (r.movie.length + r.show.length + r.episode.length) this.remember(q);
       this.active = 0;
       this.draw();
+    }
+
+    // Puts q first in the recent searches. A query that extends or shortens the newest entry is the
+    // same search, still being typed ("ba", "bat", "batman"): the longer one takes its place.
+    remember(q) {
+      const list = this.app.settings.recentSearches || [];
+      const low = (s) => s.toLowerCase();
+      const first = list[0];
+      const typing = first && (low(first).startsWith(low(q)) || low(q).startsWith(low(first)));
+      const head = typing && first.length > q.length ? first : q;
+      const rest = (typing ? list.slice(1) : list).filter(s => low(s) !== low(head));
+      this.app.saveSettings({ recentSearches: [head, ...rest].slice(0, RECENT_MAX) });
+    }
+
+    // A recent search looks like a result row, with the search icon in place of the poster.
+    recentRow(query, idx) {
+      return h('div.pal-row', { onmousemove: () => { if (this.active !== idx) { this.active = idx; this.mark(); } }, onclick: (e) => this.choose(idx, e.ctrlKey) },
+        h('div.pal-icon', icon('search', { size: 18 })), h('div', { style: { minWidth: 0 } }, h('div.t', query)), h('span.kbd', 'Enter'));
     }
 
     // Groups in display order; each row is { item, el }.
@@ -83,8 +103,19 @@
       this.tabsEl.replaceChildren(...TABS.map(([k, l]) => h('button.tab' + (this.tab === k ? '.active' : ''), { onclick: () => { this.tab = k; this.active = 0; this.draw(); this.input.focus(); } }, l)));
       this.rows = [];
       if (!this.results) {
-        this.resEl.replaceChildren(h('div.loading', this.query.length ? 'Type at least 2 characters.' : 'Search for a title.'));
-        return;
+        // Empty field: the recent searches, as rows { query, el }.
+        const recent = this.query.length ? [] : (this.app.settings.recentSearches || []);
+        if (!recent.length) {
+          this.resEl.replaceChildren(h('div.loading', this.query.length ? 'Type at least 2 characters.' : 'Search for a title.'));
+          return;
+        }
+        this.active = 0;
+        this.resEl.replaceChildren(h('div.pal-head.eyebrow', 'Recent searches'), ...recent.map((query, idx) => {
+          const el = this.recentRow(query, idx);
+          this.rows.push({ query, el });
+          return el;
+        }));
+        return this.mark();
       }
       const els = [];
       for (const [head, list] of this.groups()) {
@@ -129,6 +160,12 @@
     choose(idx, play) {
       const r = this.rows[idx];
       if (!r) return;
+      // A recent search runs again in the field; the dialog stays open.
+      if (r.query != null) {
+        this.input.value = r.query;
+        this.input.focus();
+        return this.search();
+      }
       const pick = this.onPick;
       this.close();
       if (pick) return pick(r.item);
