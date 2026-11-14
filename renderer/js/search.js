@@ -11,6 +11,7 @@
       this.app = app;
       this.root = document.getElementById('palette');
       this.isOpen = false;
+      this.req = 0;   // counts search requests over all openings; only the answer to the newest one is drawn
       this.root.addEventListener('mousedown', (e) => { if (e.target === this.root) this.close(); });
     }
 
@@ -29,7 +30,7 @@
       // The key hints are buttons too. Mouse down does not take the focus, so typing and the arrow keys go on working.
       const key = (cls, label, title, fn) => h('button.' + cls, { title, onmousedown: (e) => e.preventDefault(), onclick: fn }, label);
       this.root.replaceChildren(h('div.pal',
-        h('div.pal-input', icon('search', { size: 20 }), this.input, key('kbd', 'Esc', 'Close', () => this.close())),
+        this.inputRow = h('div.pal-input', icon('search', { size: 20 }), this.input, key('kbd', 'Esc', 'Close', () => this.close())),
         h('div.pal-tabs', this.tabsEl),
         this.resEl,
         h('div.pal-foot',
@@ -49,12 +50,21 @@
       this.isOpen = false;
     }
 
+    // The input row shows a spinning ring in place of the search icon while a request is out.
+    busy(on) {
+      this.inputRow.classList.toggle('busy', on);
+      this.resEl.setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+
     async search() {
+      const n = ++this.req;
       const q = this.input.value.trim();
       this.query = q;
-      if (q.length < 2) { this.results = null; return this.draw(); }
+      if (q.length < 2) { this.busy(false); this.results = null; return this.draw(); }
+      this.busy(true);
       const r = await this.app.plex.search(q).catch(() => ({ movie: [], show: [], episode: [] }));
-      if (q !== this.query || !this.isOpen) return;
+      if (n !== this.req || !this.isOpen) return;
+      this.busy(false);
       for (const k of Object.keys(r)) r[k] = this.app.allow(r[k]);
       this.results = r;
       if (r.movie.length + r.show.length + r.episode.length) this.remember(q);

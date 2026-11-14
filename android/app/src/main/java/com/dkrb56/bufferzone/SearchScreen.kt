@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /** When set, a picked result goes here instead of opening it (Multi-view uses this to add a stream). */
 var searchPick: ((Item) -> Unit)? = null
@@ -55,12 +57,16 @@ fun SearchScreen() {
     var query by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf("all") }
     var results by remember { mutableStateOf<Map<String, List<Item>>?>(null) }
+    var searching by remember { mutableStateOf(false) }
     val fr = remember { FocusRequester() }
     LaunchedEffect(query) {
         val q = query.trim()
-        if (q.length < 2) { results = null; return@LaunchedEffect }
+        if (q.length < 2) { results = null; searching = false; return@LaunchedEffect }
         delay(300)
+        searching = true
         results = runCatching { App.plex.search(q) }.getOrDefault(emptyMap()).mapValues { App.allow(it.value) }
+        // runCatching also catches the cancel of an older search; only the newest search switches the ring off.
+        if (isActive) searching = false
     }
     LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
 
@@ -77,6 +83,7 @@ fun SearchScreen() {
             singleLine = true,
             placeholder = { T(if (searchPick != null) "Add a stream to Multi-view" else "Search movies, series and episodes", 18.sp, color = C.muted) },
             leadingIcon = { Icon(Icons.Outlined.Search, null, tint = C.accent) },
+            trailingIcon = { if (searching) CircularProgressIndicator(Modifier.size(20.dp), color = C.accent, strokeWidth = 2.dp) },
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 20.sp, color = C.text),
             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = C.accent, unfocusedBorderColor = C.lineHover, cursorColor = C.accent, focusedContainerColor = C.bg2, unfocusedContainerColor = C.bg2)
