@@ -15,7 +15,7 @@ A paused video now stays paused when the app rebuilds the stream. Playback start
 
 ## Why
 Cause, with evidence:
-- The app log shows the loop. From 22:39:42 to 22:46:50 UTC on 2026-11-14 the log has 12 lines `hls session gone, restarting at …`, about every 35 to 40 s. Before each one: six `fragLoadError` 404 on one segment, the ping answers 404, then a fatal 404.
+- The app log shows the loop. From 22:39:42 to 22:46:50 UTC on 2026-11-14 the log has 12 lines `hls session gone, restarting at …`, one every 33 to 49 s. Before each one: six `fragLoadError` 404 on one segment, the ping answers 404, then a fatal 404.
 - The restart path `onHlsError` calls `seekTo(…, { restart: true })`. `seekTo` called `video.play()` when the new stream was ready and did not look at the pause.
 - `load()` also ended with `video.play()` with no check. All quality, audio, subtitle and fallback reloads go through `load()`.
 - `destroyStream()` calls `video.load()`. The media load algorithm sets `paused` to true. So the fix reads the pause before `destroyStream()`.
@@ -28,7 +28,7 @@ The check script reproduced the fault before the change: each paused scenario go
 - `android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt`: `load(startAt, playWhenReady)`. `play(req)` passes true. `reload(t)` passes the current `player.playWhenReady`, read before the old session stops.
 
 ## Verification
-- `LOG="/c/Users/dani/AppData/Roaming/Buffer Zone/buffer-zone.log"; ls -la "$LOG"; echo "== restarts (last 12)"; grep -n "hls session gone" "$LOG" | tail -12 | cut -c1-200; echo "== context of the last restart"; n=$(grep -n "hls session gone" "$LOG" | tail -1 | cut -d: -f1); [ -n "$n" ] && sed -n "$((n-12)),$((n+4))p" "$LOG" | cut -c1-240` showed 12 restarts from 22:39:42 to 22:46:50 UTC, each after a fatal `fragLoadError` 404, with a ping 404 before it. The restart position moves only 1 to 20 s between restarts.
+- `LOG="/c/Users/dani/AppData/Roaming/Buffer Zone/buffer-zone.log"; ls -la "$LOG"; echo "== restarts (last 12)"; grep -n "hls session gone" "$LOG" | tail -12 | cut -c1-200; echo "== context of the last restart"; n=$(grep -n "hls session gone" "$LOG" | tail -1 | cut -d: -f1); [ -n "$n" ] && sed -n "$((n-12)),$((n+4))p" "$LOG" | cut -c1-240` showed 12 restarts from 22:39:42 to 22:46:50 UTC, each after a fatal `fragLoadError` 404, with a ping 404 before it. The restart position moves at most 20 s between two restarts.
 - `node /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/check-player-pause.js renderer/js/player.js; echo "exit=$?"` on the unchanged file (reproduction): every paused row showed 1 `play()` call, `paused at end` false and timeline state "playing". The script printed `RESUMED WHILE PAUSED: session gone (404) restart; quality change; seek outside the buffer` and `exit=1`. The ping went to the new session in every row.
 - `node --check renderer/js/player.js; echo "check exit=$?"; node /c/Users/dani/.claude/jobs/f8c8c5fb/tmp/check-player-pause.js renderer/js/player.js; echo "exit=$?"; git diff --stat` after the change: `check exit=0`. Session-gone restart while paused: 0 `play()` calls, paused, new session, timeline "paused", ping to the new session. Session-gone restart while playing: 1 call, playing, new session. Quality change while paused: 0 calls. Seek outside the buffer while paused: 0 calls. Last line `OK: every paused scenario stays paused`, `exit=0`.
 - `node build.js 2>&1 | tail -15; echo "exit=${PIPESTATUS[0]}"; ls -la ../dist/com.dkrb56.bufferzone_0.2.9_all.ipk` in `webos/`: `Success`, `exit=0`, the ipk exists (271746 bytes).
@@ -55,7 +55,7 @@ What nobody tried:
 - Nobody tried Play during the short reload gap (see Follow-ups).
 
 ## Follow-ups
-- The server drops the session every 35 to 40 s. This is the "keeps loading" part of the user's report, and this ticket does not fix it. The new playback stats box (key D) shows it.
+- The server drops the session every 33 to 49 s. This is the "keeps loading" part of the user's report, and this ticket does not fix it. The new playback stats box (key D) shows it.
 - The restart limit is 2 per minute. A third session loss in 60 s shows "Stream error". Today the drops are just outside that limit.
 - Android TV: `togglePlay` uses `isPlaying`, so pause does nothing while the player buffers. A user cannot pause during the spinner. Not changed.
 - A Play press in the short gap of a reload is lost: the new source resets it. The gap is the decision request, about 0.3 s in the log. The user then presses Play again. Before this change every reload played, so the gap did not matter.
