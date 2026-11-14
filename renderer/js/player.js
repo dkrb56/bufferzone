@@ -215,7 +215,7 @@
         this.nextBtn.style.display = this.isEpisode ? '' : 'none';
         this.epsBtn.style.display = this.isEpisode ? '' : 'none';
         this.app.onPlayerStart?.(this);
-        await this.load(startAt);
+        await this.load(startAt, { paused: false });
       } catch (err) {
         this.fail(err);
       }
@@ -273,7 +273,9 @@
       return NATIVE_SUBS && !this.tile && !this.noNativeSubs && !!s && !s.key && Subtitles.isTextSub(s);
     }
 
-    async load(startAt) {
+    // `paused` keeps the video paused after the reload; by default it is the state before the reload
+    // (read before destroyStream(), which resets it), so a paused video stays paused.
+    async load(startAt, { paused = this.video.paused } = {}) {
       this.destroyStream();
       this.overlay.clear();
 
@@ -310,7 +312,7 @@
       this.video.volume = this.tile ? (this.tileVolume ?? 0) : (this.settings.volume ?? 1);
       this.volume.value = this.video.volume;
       this.applyBoost();
-      this.video.play().catch(() => {});
+      if (!paused) this.video.play().catch(() => {});
       this.startTimers();
       this.updateUi();
     }
@@ -603,10 +605,12 @@
         if (t >= b.start(i) && t <= b.end(i)) { this.video.currentTime = t; return; }
       }
       // Outside the buffer: restart the transcode at the new position.
+      // A paused video stays paused; read it first, because destroyStream() resets `paused` to true.
+      const paused = this.video.paused;
       this.spinner.classList.add('on');
       if (!restart) this.stats.expectWait();
       this.destroyStream();
-      this.startHls(t, this.subMode).then(() => this.video.play().catch(() => {})).catch(e => this.fail(e));
+      this.startHls(t, this.subMode).then(() => { if (!paused) this.video.play().catch(() => {}); }).catch(e => this.fail(e));
     }
 
     togglePlay() {

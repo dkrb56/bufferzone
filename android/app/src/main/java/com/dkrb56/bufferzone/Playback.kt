@@ -133,7 +133,7 @@ class Playback(private val ctx: Context, val tile: Boolean = false) {
                 if (req.subPreset) subId = req.subId?.takeIf { it != 0L }
                 leaves = emptyList(); nextEp = null
                 if (isEpisode && !tile) findNext()
-                load(req.startAt)
+                load(req.startAt, playWhenReady = true)
             } catch (e: Exception) { fail(e.message ?: "Playback failed") }
         }
     }
@@ -173,7 +173,8 @@ class Playback(private val ctx: Context, val tile: Boolean = false) {
     }
 
     // ---------- load ----------
-    private suspend fun load(startAt: Double) {
+    /** [playWhenReady] false keeps a paused video paused after a reload. */
+    private suspend fun load(startAt: Double, playWhenReady: Boolean) {
         val p = part ?: return
         val m = meta ?: return
         tracksChecked = false
@@ -211,7 +212,7 @@ class Playback(private val ctx: Context, val tile: Boolean = false) {
         // With copyts=1 the HLS playlist covers the whole file and keeps absolute times, so both modes start at startAt.
         player.setMediaItem(item, (startAt * 1000).toLong())
         player.prepare()
-        player.playWhenReady = true
+        player.playWhenReady = playWhenReady
         applyStyle()
         applyBoost()
         startTimer()
@@ -289,9 +290,11 @@ class Playback(private val ctx: Context, val tile: Boolean = false) {
         scope.launch { reload(t) }
     }
 
+    // The user's play/pause choice survives the reload: pause() sets playWhenReady to false, and an error leaves it so.
     private suspend fun reload(t: Double) {
+        val play = player.playWhenReady
         stopTranscode()
-        load(t)
+        load(t, play)
     }
 
     fun fail(msg: String) { error = msg; buffering = false; App.log("playback failed: $msg") }
