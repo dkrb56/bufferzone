@@ -383,8 +383,88 @@ OUTPUT:
     cw-check.js
     settings.before.json
 
-### 2. WORK — blocked
-The report says done, but its Verification section names no command.
+### EVIDENCE: WORK 2026-11-14T20:51:31.623Z
+COMMAND: F="C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/cb833239-5ec7-4b8a-b7b3-5cae8ca1387e/tasks/b9xl3a6ss.output"; tail -n 12 "$F"; echo ---; grep -nE "^w: .*HomeScreen|^e: |BUILD SUCCESSFUL|BUILD FAILED|compileDebugKotlin" "$F" | head -20
+EXIT: 0
+OUTPUT:
+    Create com.dkrb56.bufferzone_0.2.8_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+    BufferZone-0.2.8-setup.exe  122.0 MB
+    BufferZone-0.2.8-setup.exe.blockmap  0.1 MB
+    latest.yml  0.0 MB
+    BufferZone-0.2.8-portable.exe  108.0 MB
+    BufferZone-tv-0.2.8.apk  20.6 MB
+    com.dkrb56.bufferzone_0.2.8_all.ipk  0.3 MB
+    
+    [exited with code 0]
+    ---
+    57:> Task :app:compileDebugKotlin
+    68:BUILD SUCCESSFUL in 32s
+
+### EVIDENCE: WORK 2026-11-14T20:51:36.077Z
+COMMAND: grep -c "wlGuids" webos/build/app/js/views.js; git status --short
+EXIT: 0
+OUTPUT:
+    2
+     M README.md
+     M android/app/src/main/java/com/dkrb56/bufferzone/HomeScreen.kt
+     M renderer/js/views.js
+
+### EVIDENCE: WORK 2026-11-14T20:51:40.085Z
+COMMAND: git log --oneline -3; git check-ignore -v .dispatch/continue-watched.md; git ls-files .dispatch | head -20
+EXIT: 0
+OUTPUT:
+    5e4e5d7 Dispatch: 4 task files
+    f11ac41 Dispatch: 8 task files
+    936bdb4 search-recent: show recent searches in the empty search dialog
+    .dispatch/briefs/continue-watched.md
+    .dispatch/briefs/search-recent.md
+    .dispatch/continue-watched.md
+    .dispatch/continue-watched.session
+    .dispatch/continue-watched.state
+    .dispatch/logs/continue-watched.md
+    .dispatch/logs/search-recent.md
+    .dispatch/plan-flags.txt
+    .dispatch/plans/continue-watched.md
+    .dispatch/plans/search-recent.md
+    .dispatch/search-recent.md
+    .dispatch/search-recent.session
+    .dispatch/search-recent.state
+    .dispatch/tickets.jsonl
+    .dispatch/work-flags.txt
+    .dispatch/worker.ps1
+
+### EVIDENCE: WORK 2026-11-14T20:51:45.425Z
+COMMAND: git add README.md android/app/src/main/java/com/dkrb56/bufferzone/HomeScreen.kt renderer/js/views.js && git commit -q -F - <<'EOF'
+    continue-watched: show titles not on the watchlist in Continue watching
+    
+    With a folder selected, home kept only titles in a selected folder.
+    Folders hold watchlist titles only, so in-progress titles that are not
+    on the watchlist were always hidden behind the "more" link.
+    
+    Now a title passes the folder filter when it is not on the watchlist or
+    when it is in a selected folder. Next up uses the same rule, and the
+    "more" link counts only hidden watchlist titles. Home waits for the
+    watchlist load that the right column already starts. Same change in the
+    Android TV home screen; webOS takes the desktop renderer.
+    EOF
+    git log --oneline -1; git status --short
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/HomeScreen.kt', LF will be replaced by CRLF the next time Git touches it
+    4a9e1af continue-watched: show titles not on the watchlist in Continue watching
+
+### EVIDENCE: WORK 2026-11-14T20:51:53.385Z
+COMMAND: git status --short
+EXIT: 0
+OUTPUT:
+    (Bash completed with no output)
+
+### 2. WORK — ok
+When you select a folder on home, "Continue watching" now also shows the titles that are not on your watchlist. Before, these titles were always hidden behind the "more" link.
 Files: renderer/js/views.js, android/app/src/main/java/com/dkrb56/bufferzone/HomeScreen.kt, README.md
 Blockers: none
 
@@ -408,7 +488,26 @@ Blockers: none
 - `README.md`: one clause in the watchlist folders line.
 
 ## Verification
-BUILD_PENDING
+- `node --check renderer/js/views.js; echo "exit=$?"` printed `exit=0`.
+evidence: yes
+- `node scripts/build-all.js` ended with exit code 0. It printed the six files: `BufferZone-0.2.8-setup.exe` 122.0 MB, its `.blockmap` 0.1 MB, `latest.yml`, `BufferZone-0.2.8-portable.exe` 108.0 MB, `BufferZone-tv-0.2.8.apk` 20.6 MB, `com.dkrb56.bufferzone_0.2.8_all.ipk` 0.3 MB. Gradle printed `BUILD SUCCESSFUL in 32s` after `:app:compileDebugKotlin`, with no warning for `HomeScreen.kt`.
+evidence: yes
+- `grep -c "wlGuids" webos/build/app/js/views.js; git status --short` printed `2`: the webOS package has the new rule.
+evidence: yes
+- `npx electron . --user-data-dir="$CLAUDE_JOB_DIR/tmp/bz-profile" --remote-debugging-port=9333` started the dev app on a separate test profile (copies of your settings, token and key file). Your own app was open, so the test did not use your settings folder.
+evidence: yes
+- `node "$CLAUDE_JOB_DIR/tmp/cw-check.js" 9333` read the home view and compared the old and the new rule on the same server data. It does not play or change anything. Result, with the folder "Normalno" selected:
+evidence: yes
+  - The old rule showed 17 rows. The new rule shows 50 rows. The 33 new rows are all titles that are not on the watchlist (for example Murderbot "Watched today 21:50", Man of War, Warfare, Doctor Who (2005)).
+  - The 17 rows from before still show.
+  - The rows on screen are the same as the new rule (`screenMatchesNewRule: true`) and sort newest first (`screenSortedNewestFirst: true`).
+  - Each row has its thumbnail, title, episode, minutes left and "Watched" text, as before.
+  - The "more" link says "12 more in progress outside these folders · Show". These 12 are watchlist titles in your other folder.
+  - Next up was empty: all its titles are already in Continue watching.
+- `ls "$CLAUDE_JOB_DIR/tmp/bz-profile" | head -30; echo ---; grep -c "" "$CLAUDE_JOB_DIR/tmp/bz-profile/buffer-zone.log" 2>&1; echo ---; sha256sum "$APPDATA/Buffer Zone/settings.json" "$CLAUDE_JOB_DIR/tmp/settings.before.json"; cmp "$CLAUDE_JOB_DIR/tmp/bz-profile/settings.json" "$CLAUDE_JOB_DIR/tmp/settings.before.json" && echo "test profile settings unchanged"` showed that the dev app wrote its log into the test profile. Your `settings.json` has the same hash as before the test. I then deleted the test profile with the token copy.
+evidence: yes
+- `git status --short` after the commit printed nothing. The commit is `4a9e1af` on `main`. Nothing is pushed.
+evidence: yes
 
 ## Follow-ups
 - Version bump and release: not done. The plan keeps `package.json` unchanged. Your release routine (bump the patch version, build, push, publish the six files) is still open.
@@ -423,4 +522,4 @@ BUILD_PENDING
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-fable-5-1 | 386 | 162078 | 1281689 | 29268 | 1473421 |
-| claude-opus-5-5 | 40 | 449114 | 5114145 | 21720 | 5585019 |
+| claude-opus-5-5 | 51 | 455120 | 6870215 | 25091 | 7350477 |
