@@ -79,3 +79,11 @@ When the search field is empty, the body of the search dialog shows the user's r
 
 ## Size
 2 files: `renderer/js/search.js` (about 35 added lines), `renderer/styles.css` (1 line).
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-14 21:40. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. When does a search go into the list?: when the results arrive and at least one title matches; typing steps fold into the longer query
+2. How many recent searches does the list keep?: 8
+3. Is the list shared by all profiles or kept per profile?: shared, one list for the app, like the pinned items

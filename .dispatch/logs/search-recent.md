@@ -83,6 +83,14 @@ When the search field is empty, the body of the search dialog shows the user's r
 ## Size
 2 files: `renderer/js/search.js` (about 35 added lines), `renderer/styles.css` (1 line).
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-14 21:40. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. When does a search go into the list?: when the results arrive and at least one title matches; typing steps fold into the longer query
+2. How many recent searches does the list keep?: 8
+3. Is the list shared by all profiles or kept per profile?: shared, one list for the app, like the pinned items
+
 ## Stages
 
 ### STAGE: PLAN
@@ -93,28 +101,252 @@ Files: .dispatch/plans/search-recent.md
 Blockers: When does a search go into the list?; How many recent searches does the list keep?; Is the list shared by all profiles or kept per profile?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-14T20:40:54.606Z
+COMMAND: git status --short && git log --oneline -3 && date '+%Y-%m-%d %H:%M:%S %Z'
+EXIT: 0
+OUTPUT:
+     M .dispatch/logs/search-recent.md
+     M .dispatch/plans/search-recent.md
+     M .dispatch/search-recent.session
+     M .dispatch/search-recent.state
+    d843bf7 Dispatch: 1 task file
+    6671b31 Dispatch: 2 task files
+    b144a7e Dispatch: 1 task file
+    2026-11-14 21:40:56 CEST
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-14T20:41:55.086Z
+COMMAND: node --check renderer/js/search.js; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    exit=0
+
+### EVIDENCE: WORK 2026-11-14T20:42:03.457Z
+COMMAND: cd /d/dev_projects/buffer-zone/webos && node build.js
+EXIT: 0
+OUTPUT:
+    Create com.dkrb56.bufferzone_0.2.8_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+
+### EVIDENCE: WORK 2026-11-14T20:42:11.014Z
+COMMAND: cd /d/dev_projects/buffer-zone && ls -l dist/com.dkrb56.bufferzone_0.2.8_all.ipk && grep -c "recentSearches" webos/build/app/js/search.js && grep -n "pal-icon" webos/build/app/styles.css
+EXIT: 0
+OUTPUT:
+    -rw-r--r-- 1 dani 197121 269466 Nov 14 21:42 dist/com.dkrb56.bufferzone_0.2.8_all.ipk
+    3
+    380:.pal-row .pal-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+
+### EVIDENCE: WORK 2026-11-14T20:42:17.177Z
+COMMAND: node scripts/build-all.js
+EXIT: 0
+OUTPUT:
+    > Task :app:packageDebug UP-TO-DATE
+    > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+    > Task :app:assembleDebug UP-TO-DATE
+    
+    BUILD SUCCESSFUL in 1m 12s
+    37 actionable tasks: 37 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+    
+    == LG webOS
+    
+    Create com.dkrb56.bufferzone_0.2.8_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+    BufferZone-0.2.8-setup.exe  122.0 MB
+    BufferZone-0.2.8-setup.exe.blockmap  0.1 MB
+    latest.yml  0.0 MB
+    BufferZone-0.2.8-portable.exe  108.0 MB
+    BufferZone-tv-0.2.8.apk  20.0 MB
+    com.dkrb56.bufferzone_0.2.8_all.ipk  0.3 MB
+
+### EVIDENCE: WORK 2026-11-14T20:45:28.727Z
+COMMAND: ls node_modules | grep -i -E "^(jsdom|happy-dom|linkedom)$"; echo "---"; node --version; echo "$CLAUDE_JOB_DIR"
+EXIT: 0
+OUTPUT:
+    ---
+    v24.12.0
+    C:\Users\dani\.claude\jobs\dc506c3b
+
+### EVIDENCE: WORK 2026-11-14T20:46:12.537Z
+COMMAND: node "$CLAUDE_JOB_DIR/tmp/check-recent.js" D:/dev_projects/buffer-zone
+EXIT: 0
+OUTPUT:
+    PASS empty list shows the old empty text
+    PASS typing steps fold into the longer query
+    PASS a search without hits is not kept
+    PASS a new search goes first
+    PASS one character keeps the old hint
+    PASS empty field shows the heading and the rows, first row active
+    PASS arrow down moves the highlight
+    PASS Enter on a recent row runs that search and keeps the dialog open
+    PASS clearing the field shows the rows again, first row active
+    PASS a click on a recent row runs that search
+    PASS Enter on a result row still opens the title and closes the dialog
+    PASS same search in other letter case is not kept twice
+    PASS the list keeps 8 entries
+    PASS Multi-view: a recent row runs the search and does not pick a stream
+    PASS every save holds only recentSearches
+    15 checks passed
+
+### EVIDENCE: WORK 2026-11-14T20:46:20.228Z
+COMMAND: OLD="$CLAUDE_JOB_DIR/tmp/old" && mkdir -p "$OLD/renderer/js" && git show HEAD:renderer/js/search.js > "$OLD/renderer/js/search.js" && cp renderer/js/icons.js renderer/js/ui.js "$OLD/renderer/js/" && node "$CLAUDE_JOB_DIR/tmp/check-recent.js" "$OLD"; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    PASS empty list shows the old empty text
+    FAIL Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + undefined
+    - [
+    -   'batman'
+    - ]
+    
+    exit=1
+
+### EVIDENCE: WORK 2026-11-14T20:46:23.772Z
+COMMAND: git status --short && git diff --stat
+EXIT: 0
+OUTPUT:
+     M .dispatch/search-recent.state
+     M .dispatch/tickets.jsonl
+     M renderer/js/search.js
+     M renderer/styles.css
+    ?? .dispatch/logs/continue-watched.md
+    ?? .dispatch/plans/continue-watched.md
+    warning: in the working copy of '.dispatch/logs/search-recent.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/plans/search-recent.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/search-recent.session', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/search-recent.state', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/tickets.jsonl', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'renderer/styles.css', LF will be replaced by CRLF the next time Git touches it
+     .dispatch/logs/search-recent.md  | 10 +++++++++-
+     .dispatch/plans/search-recent.md |  8 ++++++++
+     .dispatch/search-recent.session  |  1 +
+     .dispatch/search-recent.state    |  2 +-
+     .dispatch/tickets.jsonl          |  1 +
+     renderer/js/search.js            | 41 ++++++++++++++++++++++++++++++++++++++--
+     renderer/styles.css              |  1 +
+     7 files changed, 60 insertions(+), 4 deletions(-)
+
+### EVIDENCE: WORK 2026-11-14T20:46:30.060Z
+COMMAND: git diff renderer/js/search.js renderer/styles.css
+EXIT: 0
+OUTPUT:
+    +      if (r.query != null) {
+    +        this.input.value = r.query;
+    +        this.input.focus();
+    +        return this.search();
+    +      }
+           const pick = this.onPick;
+           this.close();
+           if (pick) return pick(r.item);
+    diff --git a/renderer/styles.css b/renderer/styles.css
+    index 5c360d8..b1df1ac 100644
+    --- a/renderer/styles.css
+    +++ b/renderer/styles.css
+    @@ -377,6 +377,7 @@ body.bare #rail { display: none; }
+     .pal-row.active { background: var(--accent-soft); }
+     .pal-row .art { width: 40px; aspect-ratio: 2 / 3; border-radius: 4px; flex: none; }
+     .pal-row .art.still { width: 72px; aspect-ratio: 16 / 9; }
+    +.pal-row .pal-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: var(--muted); flex: none; }
+     .pal-row .t { font-weight: 600; }
+     .pal-row .d { font-size: 12px; color: var(--muted); }
+     .pal-row mark { background: none; color: var(--accent); }
+
+### EVIDENCE: WORK 2026-11-14T20:46:33.629Z
+COMMAND: git add renderer/js/search.js renderer/styles.css && git commit -m "search-recent: show recent searches in the empty search dialog
+    
+    The empty search dialog lists up to 8 recent searches as rows. Arrows,
+    Enter, click and the TV OK key run one again. A search is kept when it
+    finds at least one title; typing steps fold into the longer query.
+    The list is stored in settings (recentSearches), so it survives a restart." && git log --oneline -1 && git status --short
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'renderer/styles.css', LF will be replaced by CRLF the next time Git touches it
+    [main 936bdb4] search-recent: show recent searches in the empty search dialog
+     2 files changed, 40 insertions(+), 2 deletions(-)
+    936bdb4 search-recent: show recent searches in the empty search dialog
+     M .dispatch/logs/search-recent.md
+     M .dispatch/plans/search-recent.md
+     M .dispatch/search-recent.session
+     M .dispatch/search-recent.state
+     M .dispatch/tickets.jsonl
+    ?? .dispatch/logs/continue-watched.md
+    ?? .dispatch/plans/continue-watched.md
+
+### EVIDENCE: WORK 2026-11-14T20:46:59.425Z
+COMMAND: git show --stat --oneline HEAD && date '+%Y-%m-%d %H:%M %Z'
+EXIT: 0
+OUTPUT:
+    936bdb4 search-recent: show recent searches in the empty search dialog
+     renderer/js/search.js | 41 +++++++++++++++++++++++++++++++++++++++--
+     renderer/styles.css   |  1 +
+     2 files changed, 40 insertions(+), 2 deletions(-)
+    2026-11-14 21:46 CEST
+
+### 2. WORK — blocked
+The report says done, but 1 Verification claim matches no command of the transcript.
+Files: renderer/js/search.js, renderer/styles.css
 Blockers: none
 
 ## What changed
-none
+- The search dialog now shows "Recent searches" when the field is empty. Each recent search is a row like a result row.
+- The arrows move between the rows. Enter, a mouse click or the TV OK key puts the words into the field and runs the search again. The dialog stays open.
+- A search goes into the list when it finds at least one title. Typing steps such as "ba", "bat", "batman" become one entry, the longer one.
+- The list keeps 8 entries, newest first, one list for all profiles. These are the three decisions you took in Dispatch.
+- The list is stored with the other settings. On Windows that is the settings file, on the TV the browser storage. So the list survives a restart.
+- When the list is empty, the dialog shows "Search for a title." as before. With one letter typed, it shows "Type at least 2 characters." as before.
 
 ## Why
-none
+You asked for recent searches in the empty body of the search dialog. The rows reuse the result row, so the keys, the mouse and the TV remote work on them with no change to the TV navigation code.
 
 ## Files
-none
+- `renderer/js/search.js`: records a search with hits, draws the recent rows in the empty state, and runs a recent search on Enter or click.
+- `renderer/styles.css`: one rule for the small search icon at the left of a recent row.
 
 ## Verification
-none
+- `git status --short && git log --oneline -3 && date '+%Y-%m-%d %H:%M:%S %Z'`: the tree had only Dispatch file changes before the work. Clock 21:40:56 CEST.
+evidence: yes
+- `node --check renderer/js/search.js; echo "exit=$?"`: printed `exit=0`.
+evidence: yes
+- `node build.js`: run in `webos/`. It printed `Create com.dkrb56.bufferzone_0.2.8_all.ipk` and `Success`.
+evidence: yes
+- `ls -l dist/com.dkrb56.bufferzone_0.2.8_all.ipk && grep -c "recentSearches" webos/build/app/js/search.js && grep -n "pal-icon" webos/build/app/styles.css`: the TV package exists, dated 21:42. The built TV code has the new list code and the new style rule.
+evidence: yes
+- `node scripts/build-all.js`: Windows, Android TV and webOS all built. It ended with the list of the six files in `dist/` and no error. The Android step was all up to date, because no Android file changed.
+evidence: yes
+- `ls node_modules | grep -i -E "^(jsdom|happy-dom|linkedom)$"; echo "---"; node --version; echo "$CLAUDE_JOB_DIR"`: no DOM library is installed. So the check script below brings a small stand-in DOM.
+evidence: yes
+- `node "$CLAUDE_JOB_DIR/tmp/check-recent.js" D:/dev_projects/buffer-zone`: 15 checks passed. They cover the empty text, the typing fold, no entry for a search without hits, the order, the 8-entry limit, the letter case, the arrows, Enter and click on a recent row, Enter on a result row, and the Multi-view picker. The script is in the job's temp folder, not in the repo.
+evidence: yes
+- `OLD="$CLAUDE_JOB_DIR/tmp/old" && mkdir -p "$OLD/renderer/js" && git show HEAD:renderer/js/search.js > "$OLD/renderer/js/search.js" && cp renderer/js/icons.js renderer/js/ui.js "$OLD/renderer/js/" && node "$CLAUDE_JOB_DIR/tmp/check-recent.js" "$OLD"; echo "exit=$?"`: the same checks against the old search file fail at the second check and exit 1. So the checks really detect the feature.
+evidence: yes
+- `git status --short && git diff --stat`: outside `.dispatch/`, only the two planned files changed.
+evidence: yes
+- `git diff renderer/js/search.js renderer/styles.css`: the diff matches the plan.
+evidence: yes
+- `git show --stat --oneline HEAD`: commit `936bdb4` holds only the two files, 40 lines added and 2 removed.
+evidence: no
+
+What nobody tried, for the tester:
+- Nobody opened the real app on Windows. Please do the manual test from the plan: search two titles, open one, open the search again, use a row, restart the app.
+- Nobody tried it on an LG TV. Please check that the remote reaches the rows, that OK runs the search, and that Back still closes the dialog.
+- Nobody searched against a real Plex server. The checks used a stand-in server that always finds one movie.
+- Nobody looked at the rows on a real screen. Please check the icon and the text line up with the result rows, also for a long search.
 
 ## Follow-ups
-none
+- There is no way to clear the list or to remove one entry. The plan left this out on purpose.
+- The typing fold has a side effect. A search for "batman" followed later by "batman begins" leaves only "batman begins" in the list.
+- On the TV, a recent row puts the focus into the search field. On webOS this can open the on-screen keyboard. A tab click does the same today.
+- Each search with hits saves the settings once, at each pause while typing. That is one small file write each time.
+- The Android TV app has the same "Search for a title." text and no recent searches. The brief kept Android out of scope.
+- Two untracked files of the ticket continue-watched stand in `.dispatch/`. This task did not touch them.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
-| claude-fable-5-1 | 258 | 132504 | 770734 | 16889 | 920385 |
+| claude-fable-5-1 | 290 | 136278 | 904805 | 17369 | 1058742 |
+| claude-opus-5-5 | 33 | 402513 | 3965601 | 17832 | 4385979 |
