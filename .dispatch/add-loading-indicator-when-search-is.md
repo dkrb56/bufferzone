@@ -21,6 +21,9 @@ The ring works on all three platforms and all builds pass. After your answer, bo
 - The brief asks for a sign that a search runs, from the request until the results show, also after an error.
 - The search icon is where the user looks while typing. The ring is drawn with CSS only, so the TV remote finds no new control.
 - A counter of search requests replaces the old check of the query text. The old check let an older answer for the same words through.
+- You answered the question of the first report with "Add both guards and amend the commit". Both guards are now in the code.
+- Android guard: the blocking HTTP call of a cancelled search still ends, and `runCatching` catches the cancel. The ring now goes off only when the search is still active (`Plex.kt`, lines 197 to 213, and the search effect in `SearchScreen.kt`).
+- Windows and TV guard: the plan set the counter to 0 at each opening of the dialog. An answer from an earlier opening could then get the number of a new search. The counter is now set once and keeps counting across openings.
 
 ## Files
 - `renderer/js/search.js`: a request counter, set once in the constructor, a reference to the input row, a new method `busy(on)`, and the busy calls and the counter check in `search()`.
