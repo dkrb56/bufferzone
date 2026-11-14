@@ -25,8 +25,8 @@ The ring works on all three platforms and all builds pass. After your answer, bo
 ## Files
 - `renderer/js/search.js`: a request counter, set once in the constructor, a reference to the input row, a new method `busy(on)`, and the busy calls and the counter check in `search()`.
 - `renderer/styles.css`: `.pal-input` gets `position: relative`. Two new rules hide the search icon and draw the ring while the row has the class `busy`.
-- `android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt`: a `searching` state, set in the search effect, and a `trailingIcon` that shows a 20 dp ring while it is true.
-- The commit has only these three files. The `.dispatch/` files are for Dispatch to commit.
+- `android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt`: a `searching` state, set in the search effect, and a `trailingIcon` that shows a 20 dp ring while it is true. The ring goes off only when the search is still active, so a cancelled search does not change it.
+- The two commits have only these three files. The `.dispatch/` files are for Dispatch to commit.
 
 ## Verification
 - `git status --short && git log --oneline -1 && git diff --stat HEAD -- renderer android`: before the edits, no changes in `renderer/` or `android/`; only Dispatch's own files were changed.

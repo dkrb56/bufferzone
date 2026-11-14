@@ -463,8 +463,8 @@ Blockers: 1. Add the guards against late answers from older searches?
 ## Files
 - `renderer/js/search.js`: a request counter, set once in the constructor, a reference to the input row, a new method `busy(on)`, and the busy calls and the counter check in `search()`.
 - `renderer/styles.css`: `.pal-input` gets `position: relative`. Two new rules hide the search icon and draw the ring while the row has the class `busy`.
-- `android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt`: a `searching` state, set in the search effect, and a `trailingIcon` that shows a 20 dp ring while it is true.
-- The commit has only these three files. The `.dispatch/` files are for Dispatch to commit.
+- `android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt`: a `searching` state, set in the search effect, and a `trailingIcon` that shows a 20 dp ring while it is true. The ring goes off only when the search is still active, so a cancelled search does not change it.
+- The two commits have only these three files. The `.dispatch/` files are for Dispatch to commit.
 
 ## Verification
 - `git status --short && git log --oneline -1 && git diff --stat HEAD -- renderer android`: before the edits, no changes in `renderer/` or `android/`; only Dispatch's own files were changed.
@@ -514,4 +514,4 @@ Deviations from the plan:
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-fable-5-1 | 322 | 144134 | 1053231 | 23404 | 1221091 |
-| claude-opus-5-5 | 62 | 757862 | 8016678 | 33478 | 8808080 |
+| claude-opus-5-5 | 64 | 758380 | 8367159 | 36745 | 9162348 |
