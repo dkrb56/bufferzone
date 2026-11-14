@@ -489,6 +489,20 @@ evidence: yes
 - `grep -n -E "^w: |^e: " "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/7a86a6ff-5c42-4275-a42c-f57ba57bdb2e/tasks/bc2vaym3o.output" | head; echo "----"; cd /d/dev_projects/buffer-zone && git status --short`: no Kotlin warning and no Kotlin error. Before the commit, only the three code files and Dispatch's own files were changed.
 evidence: yes
 
+After your answer:
+- `git status --short && git log --oneline -4 && git branch -vv | head -3 && git show --stat --oneline HEAD | head -12 && grep -rl -E "5b7c37a|5e582da" .dispatch 2>/dev/null`: the tree was clean. Three Dispatch commits stand on top of `5b7c37a`. `main` is 22 commits ahead of `origin/main`, so nothing is pushed. Only this report and the Dispatch log name the commit hashes.
+evidence: yes
+- `git diff -- renderer android && node --check renderer/js/search.js; echo "exit=$?"`: showed the two guards and printed `exit=0`. It also showed that the edit tool removed one space in the input line again.
+evidence: yes
+- `git diff --stat -- renderer android && git diff -- renderer/js/search.js | grep -n "h('input'" ; node --check renderer/js/search.js; echo "exit=$?"`: after the fix, the input line is unchanged context, the diff is 2 lines in `search.js` and 3 lines in `SearchScreen.kt`, and it printed `exit=0`.
+evidence: yes
+- `node scripts/build-all.js`: second run, ended with exit code 0.
+evidence: yes
+- `grep -n -E "BUILD SUCCESSFUL|BUILD FAILED|^== |compileDebugKotlin|^w: |^e: |^Success|\.(exe|apk|ipk|yml|blockmap)  " "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/6590dc8e-c14a-493c-999f-37ff80812e06/tasks/bhfopxeuq.output"`: `compileDebugKotlin` ran, Android printed `BUILD SUCCESSFUL in 25s`, webOS printed `Success`, and all six files are in `dist/`. No Kotlin warning, no Kotlin error and no `BUILD FAILED` line.
+evidence: yes
+- `git status --short && git add renderer/js/search.js android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt && git commit -q --fixup=5b7c37a && git log --oneline -6 && git show --stat --oneline HEAD | tail -3 && git status --short && date '+%Y-%m-%d %H:%M %z'`: made commit `e2d26ac` with the two files. After it, the tree was clean.
+evidence: yes
+
 What nobody tried:
 - Nobody started the app on Windows, on an LG TV or on Android TV. Nobody saw the ring.
 - Nobody tested a slow server, typing fast, or a network that is off.
