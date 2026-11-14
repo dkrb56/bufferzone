@@ -186,28 +186,241 @@ Files: .dispatch/plans/continue-watched.md
 Blockers: Which titles pass the folder filter in Continue watching?; Does Next up follow the same rule?; Does the Android TV app change in this task?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-14T20:47:39.957Z
+COMMAND: git status --short && git log --oneline -5 && date
+EXIT: 0
+OUTPUT:
+     M .dispatch/continue-watched.session
+     M .dispatch/continue-watched.state
+    f11ac41 Dispatch: 8 task files
+    936bdb4 search-recent: show recent searches in the empty search dialog
+    d843bf7 Dispatch: 1 task file
+    6671b31 Dispatch: 2 task files
+    b144a7e Dispatch: 1 task file
+    Sat Nov 14 21:47:41 CEST 2026
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-14T20:47:45.660Z
+COMMAND: git show --stat 936bdb4 | head -20 && git diff 50725f4 HEAD --stat -- renderer android README.md
+EXIT: 0
+OUTPUT:
+    commit 936bdb44798787c15681a8164e986c514cf80342
+    Author: dani <10598301+dkrb56@users.noreply.github.com>
+    Date:   Sat Nov 14 21:46:34 2026 +0100
+    
+        search-recent: show recent searches in the empty search dialog
+        
+        The empty search dialog lists up to 8 recent searches as rows. Arrows,
+        Enter, click and the TV OK key run one again. A search is kept when it
+        finds at least one title; typing steps fold into the longer query.
+        The list is stored in settings (recentSearches), so it survives a restart.
+    
+     renderer/js/search.js | 41 +++++++++++++++++++++++++++++++++++++++--
+     renderer/styles.css   |  1 +
+     2 files changed, 40 insertions(+), 2 deletions(-)
+     renderer/js/search.js | 41 +++++++++++++++++++++++++++++++++++++++--
+     renderer/styles.css   |  1 +
+     2 files changed, 40 insertions(+), 2 deletions(-)
+
+### EVIDENCE: WORK 2026-11-14T20:48:40.186Z
+COMMAND: node --check renderer/js/views.js; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    exit=0
+
+### EVIDENCE: WORK 2026-11-14T20:48:40.791Z
+COMMAND: git diff
+EXIT: 0
+OUTPUT:
+         ]);
+         if (!alive()) return;
+     
+         // Left: continue watching + next up. The same title can be in two libraries (e.g. Movies and Movies - 4K).
+         const seenGuid = new Set();
+         const once = (i) => { const k = i.guid || i.ratingKey; return seenGuid.has(k) ? false : seenGuid.add(k); };
+    -    // The selected watchlist folders filter the left column too.
+    +    // The selected watchlist folders filter the left column too. Titles that are not on the watchlist are in no folder, so they always show.
+         const sel = this.wlSelection();
+    -    const inSel = (i) => this.inSelection(this.titleGuid(i), sel);
+    +    const wlGuids = this.watchGuids || new Set();
+    +    const inSel = (i) => !wlGuids.has(this.titleGuid(i)) || this.inSelection(this.titleGuid(i), sel);
+         // Newest first by last watched time; the app sorts itself and does not rely on the server's order.
+         const contAll = this.allow(cw).filter(inTab)
+           .sort((a, b) => (b.lastViewedAt || 0) - (a.lastViewedAt || 0)).filter(once);
+    -    // Titles in progress outside the selected folders are hidden, but a link can show them (until the app restarts).
+    +    // Watchlist titles in progress outside the selected folders are hidden, but a link can show them (until the app restarts).
+         const outside = sel.length ? contAll.filter(i => !inSel(i)).length : 0;
+         const showAll = !!this.cwShowAll && outside > 0;
+         const cont = showAll ? contAll : contAll.filter(inSel);
+
+### EVIDENCE: WORK 2026-11-14T20:48:47.417Z
+COMMAND: node scripts/build-all.js
+EXIT: 0
+OUTPUT:
+    Command running in background with ID: b9xl3a6ss. Output is being written to: C:\Users\dani\AppData\Local\Temp\claude\24e98aa09f2c58d6\cb833239-5ec7-4b8a-b7b3-5cae8ca1387e\tasks\b9xl3a6ss.output. You …
+
+### EVIDENCE: WORK 2026-11-14T20:49:14.820Z
+COMMAND: ls -la "$APPDATA/Buffer Zone/" 2>&1 | head -20; node --version; node -e "const s=require(process.env.APPDATA+'/Buffer Zone/settings.json'); console.log(JSON.stringify({wlSelected:s.wlSelected, folders:(s.watchlistFolders||[]).map(f=>({id:f.id,name:f.name,n:f.guids.length})), homeTab:s.homeTab, profileId:s.profileId}))"
+EXIT: 0
+OUTPUT:
+    drwxr-xr-x 1 dani 197121       0 Nov 14 20:25 ..
+    drwxr-xr-x 1 dani 197121       0 Oct 24 01:34 Cache
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 Code Cache
+    -rw-r--r-- 1 dani 197121   36864 Nov 13 13:39 DIPS
+    -rw-r--r-- 1 dani 197121  214272 Nov 14 21:26 DIPS-wal
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 DawnGraphiteCache
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 DawnWebGPUCache
+    -rw-r--r-- 1 dani 197121      59 Oct 24 12:54 DevToolsActivePort
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 GPUCache
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 GPUPersistentCache
+    drwxr-xr-x 1 dani 197121       0 Nov 13 20:27 GrShaderCache
+    -rw-r--r-- 1 dani 197121     490 Oct 23 16:50 Local State
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 Local Storage
+    drwxr-xr-x 1 dani 197121       0 Nov  8 20:15 Network
+    -rw-r--r-- 1 dani 197121      57 Nov 14 21:13 Preferences
+    drwxr-xr-x 1 dani 197121       0 Nov 13 13:39 Session Storage
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 ShaderCache
+    drwxr-xr-x 1 dani 197121       0 Oct 23 18:48 Shared Dictionary
+    v24.12.0
+    {"wlSelected":["fmvliok90"],"folders":[{"id":"fmvlin4vy","name":"Boris","n":38},{"id":"fmvliok90","name":"Normalno","n":49}],"homeTab":"all","profileId":null}
+
+### EVIDENCE: WORK 2026-11-14T20:49:19.797Z
+COMMAND: cp "$APPDATA/Buffer Zone/settings.json" "$CLAUDE_JOB_DIR/tmp/settings.before.json" && sha256sum "$APPDATA/Buffer Zone/settings.json" "$CLAUDE_JOB_DIR/tmp/settings.before.json"; tasklist //FI "IMAGENAME eq Buffer Zone.exe" //FO CSV //NH; tasklist //FI "IMAGENAME eq electron.exe" //FO CSV //NH
+EXIT: 0
+OUTPUT:
+    \d2445ef3ecdda2367560001ed842c4d17fcfb3e75c51f7b2366c18d2680fc31b *C:\\Users\\dani\\AppData\\Roaming/Buffer Zone/settings.json
+    \d2445ef3ecdda2367560001ed842c4d17fcfb3e75c51f7b2366c18d2680fc31b *C:\\Users\\dani\\.claude\\jobs\\cb833239/tmp/settings.before.json
+    "Buffer Zone.exe","23104","Console","1","130,240 K"
+    "Buffer Zone.exe","39412","Console","1","255,972 K"
+    "Buffer Zone.exe","17944","Console","1","50,096 K"
+    "Buffer Zone.exe","3456","Console","1","306,368 K"
+    "Buffer Zone.exe","44660","Console","1","93,076 K"
+    INFO: No tasks are running which match the specified criteria.
+
+### EVIDENCE: WORK 2026-11-14T20:49:39.235Z
+COMMAND: ls -la "$APPDATA/Buffer Zone/" | tail -n +21
+EXIT: 0
+OUTPUT:
+    drwxr-xr-x 1 dani 197121       0 Nov 14 21:44 VideoDecodeStats
+    drwxr-xr-x 1 dani 197121       0 Nov 14 21:13 blob_storage
+    -rw-r--r-- 1 dani 197121 1543836 Nov 14 21:48 buffer-zone.log
+    -rw-r--r-- 1 dani 197121   32768 Oct 23 16:50 declarative_performance_observer.db
+    -rw-r--r-- 1 dani 197121       0 Oct 23 16:50 declarative_performance_observer.db-journal
+    -rw-r--r-- 1 dani 197121    5890 Nov 14 21:44 settings.json
+    drwxr-xr-x 1 dani 197121       0 Nov 14 21:44 shared_proto_db
+    -rw-r--r-- 1 dani 197121      51 Oct 23 16:56 token.bin
+
+### EVIDENCE: WORK 2026-11-14T20:49:44.749Z
+COMMAND: P="$CLAUDE_JOB_DIR/tmp/bz-profile" && mkdir -p "$P" && cp "$APPDATA/Buffer Zone/settings.json" "$APPDATA/Buffer Zone/token.bin" "$APPDATA/Buffer Zone/Local State" "$P/" && ls -la "$P"
+EXIT: 0
+OUTPUT:
+    total 10
+    drwxr-xr-x 1 dani 197121    0 Nov 14 21:49 .
+    drwxr-xr-x 1 dani 197121    0 Nov 14 21:49 ..
+    -rw-r--r-- 1 dani 197121  490 Nov 14 21:49 Local State
+    -rw-r--r-- 1 dani 197121 5890 Nov 14 21:49 settings.json
+    -rw-r--r-- 1 dani 197121   51 Nov 14 21:49 token.bin
+
+### EVIDENCE: WORK 2026-11-14T20:50:24.449Z
+COMMAND: npx electron . --user-data-dir="$CLAUDE_JOB_DIR/tmp/bz-profile" --remote-debugging-port=9333
+EXIT: 0
+OUTPUT:
+    Command running in background with ID: bfbw1sk59. Output is being written to: C:\Users\dani\AppData\Local\Temp\claude\24e98aa09f2c58d6\cb833239-5ec7-4b8a-b7b3-5cae8ca1387e\tasks\bfbw1sk59.output. You …
+
+### EVIDENCE: WORK 2026-11-14T20:50:28.146Z
+COMMAND: node "$CLAUDE_JOB_DIR/tmp/cw-check.js" 9333
+EXIT: 0
+OUTPUT:
+          "left": "5 min left",
+          "when": "Watched 2026-08-19"
+        },
+        {
+          "title": "Curb Your Enthusiasm",
+          "sub": "S08E10 · Larry vs. Michael J. Fox",
+          "left": "18 min left",
+          "when": "Watched 2026-08-14"
+        },
+        {
+          "title": "Curb Your Enthusiasm",
+          "sub": "S10E04 · You're Not Going to Get Me to Say Anything Bad About Mickey",
+          "left": "",
+          "when": "Watched 2026-08-13"
+        }
+      ],
+      "screenMatchesNewRule": true,
+      "screenSortedNewestFirst": true,
+      "nextUp": []
+    }
+
+### EVIDENCE: WORK 2026-11-14T20:50:45.469Z
+COMMAND: ls "$CLAUDE_JOB_DIR/tmp/bz-profile" | head -30; echo ---; grep -c "" "$CLAUDE_JOB_DIR/tmp/bz-profile/buffer-zone.log" 2>&1; echo ---; sha256sum "$APPDATA/Buffer Zone/settings.json" "$CLAUDE_JOB_DIR/tmp/settings.before.json"; cmp "$CLAUDE_JOB_DIR/tmp/bz-profile/settings.json" "$CLAUDE_JOB_DIR/tmp/settings.before.json" && echo "test profile settings unchanged"
+EXIT: 0
+OUTPUT:
+    GrShaderCache
+    Local State
+    Local Storage
+    Network
+    Preferences
+    Session Storage
+    ShaderCache
+    Shared Dictionary
+    blob_storage
+    buffer-zone.log
+    declarative_performance_observer.db
+    declarative_performance_observer.db-journal
+    settings.json
+    token.bin
+    ---
+    2
+    ---
+    \d2445ef3ecdda2367560001ed842c4d17fcfb3e75c51f7b2366c18d2680fc31b *C:\\Users\\dani\\AppData\\Roaming/Buffer Zone/settings.json
+    \d2445ef3ecdda2367560001ed842c4d17fcfb3e75c51f7b2366c18d2680fc31b *C:\\Users\\dani\\.claude\\jobs\\cb833239/tmp/settings.before.json
+    test profile settings unchanged
+
+### EVIDENCE: WORK 2026-11-14T20:50:49.513Z
+COMMAND: rm -rf "$CLAUDE_JOB_DIR/tmp/bz-profile" && ls "$CLAUDE_JOB_DIR/tmp"
+EXIT: 0
+OUTPUT:
+    cw-check.js
+    settings.before.json
+
+### 2. WORK — blocked
+The report says done, but its Verification section names no command.
+Files: renderer/js/views.js, android/app/src/main/java/com/dkrb56/bufferzone/HomeScreen.kt, README.md
 Blockers: none
 
 ## What changed
-none
+- When you select a folder on home, "Continue watching" now also shows the titles that are not on your watchlist. Before, these titles were always hidden behind the "more" link.
+- Watchlist titles still follow your folder selection. The "more" link now counts only the hidden watchlist titles.
+- "Next up" uses the same rule (Decision 2).
+- The Android TV app has the same change (Decision 3). The webOS build takes the desktop code, so it has the change too.
+- The rows, their order (newest first) and their actions do not change.
+- Home now waits for the watchlist before it draws the left column, when the watchlist is not loaded yet. It uses the request that the right column starts, so no second request goes out.
 
 ## Why
-none
+- The folder filter kept a title only when its guid was in a selected folder. Folders hold only watchlist titles. So a title that is not on the watchlist never passed when a folder was selected.
+- Evidence before the change: `renderer/js/views.js` line 113 (`inSel` = `inSelection(titleGuid(item), sel)`), the same in `HomeScreen.kt` lines 131-135.
+- The new rule: a title passes when it is not on the watchlist, or when it is in a selected folder.
+- The wait condition uses `this.watchlist`, not `this.watchGuids`. After a profile switch, the app clears the watchlist but keeps the guids of the old profile until the new list arrives.
 
 ## Files
-none
+- `renderer/js/views.js`: `S.views.home` waits for the watchlist load; `inSel` lets titles that are not on the watchlist pass; two comments updated.
+- `android/app/src/main/java/com/dkrb56/bufferzone/HomeScreen.kt`: a local `inSel()` with the same rule, used for the rows, the "more" count and Next up.
+- `README.md`: one clause in the watchlist folders line.
 
 ## Verification
-none
+BUILD_PENDING
 
 ## Follow-ups
-none
+- Version bump and release: not done. The plan keeps `package.json` unchanged. Your release routine (bump the patch version, build, push, publish the six files) is still open.
+- The list is now long. With "Normalno" selected it has 50 rows, before it had 17. You can ask for a limit in a new ticket.
+- Two rows for one series: "Curb Your Enthusiasm" shows twice (S08E10 and S10E04). The duplicate check works per episode, not per series. This was so before the change; you saw it already with "All".
+- Five rows show no "min left" (for example The Orville, Fawlty Towers, Derek). The server sends these as next episodes without progress. This was so before the change.
+- If the watchlist load fails, the app treats every title as "not on the watchlist". Then all titles in progress show, also with a folder selected.
+- Android: until the watchlist arrives, all titles show for a moment. Then the hidden watchlist titles go away.
+- The brief says Android takes its renderer from this folder. That is not true: the Android app is native Kotlin with its own copy of this filter.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-fable-5-1 | 386 | 162078 | 1281689 | 29268 | 1473421 |
+| claude-opus-5-5 | 40 | 449114 | 5114145 | 21720 | 5585019 |
