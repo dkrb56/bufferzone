@@ -125,14 +125,17 @@ fun HomeScreen() {
                 val list = cw
                 if (list == null) Loading() else {
                     val sel = App.selection()
+                    // Titles that are not on the watchlist are in no folder, so they always show.
+                    val wlGuids = App.watchGuids
+                    fun inSel(i: Item) = i.titleGuid !in wlGuids || App.inSelection(i.titleGuid, sel)
                     val seen = mutableSetOf<String>()
                     fun once(i: Item) = seen.add(i.guid ?: i.ratingKey)
                     val contAll = App.allow(list).filter { inTab(it) }.sortedByDescending { it.lastViewedAt }.filter { once(it) }
-                    val outside = if (sel.isEmpty()) 0 else contAll.count { !App.inSelection(it.titleGuid, sel) }
+                    val outside = if (sel.isEmpty()) 0 else contAll.count { !inSel(it) }
                     val showAll = cwShowAll && outside > 0
-                    val cont = if (showAll) contAll else contAll.filter { App.inSelection(it.titleGuid, sel) }
+                    val cont = if (showAll) contAll else contAll.filter { inSel(it) }
                     val cwKeys = cont.map { it.ratingKey }.toSet()
-                    val next = App.allow(deck).filter { inTab(it) && App.inSelection(it.titleGuid, sel) && it.viewOffset == 0L && it.ratingKey !in cwKeys }.filter { once(it) }
+                    val next = App.allow(deck).filter { inTab(it) && inSel(it) && it.viewOffset == 0L && it.ratingKey !in cwKeys }.filter { once(it) }
                     val selNames = sel.mapNotNull { k -> if (k == "none") "No folder" else App.store.folders.firstOrNull { it.id == k }?.name }.joinToString(", ")
                     T("Continue watching", 17.sp, FontWeight.Bold)
                     if (selNames.isNotEmpty()) Row(Modifier.padding(top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {

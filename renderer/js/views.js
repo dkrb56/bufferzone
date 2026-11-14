@@ -99,22 +99,25 @@
 
     right.append(h('div.sec-head', h('h2', 'Watchlist')), h('div.loading', 'Loading watchlist…'));
     const wlPromise = this.watchlistRows().catch(() => []);
+    // The folder filter below needs the watchlist guids. watchlistRows() above already started that load, so this waits for the same request.
     const [cw, deck] = await Promise.all([
       this.plex.continueWatching().catch(() => []),
-      this.plex.onDeck().catch(() => [])
+      this.plex.onDeck().catch(() => []),
+      this.watchlist ? null : this.loadWatchlist()
     ]);
     if (!alive()) return;
 
     // Left: continue watching + next up. The same title can be in two libraries (e.g. Movies and Movies - 4K).
     const seenGuid = new Set();
     const once = (i) => { const k = i.guid || i.ratingKey; return seenGuid.has(k) ? false : seenGuid.add(k); };
-    // The selected watchlist folders filter the left column too.
+    // The selected watchlist folders filter the left column too. Titles that are not on the watchlist are in no folder, so they always show.
     const sel = this.wlSelection();
-    const inSel = (i) => this.inSelection(this.titleGuid(i), sel);
+    const wlGuids = this.watchGuids || new Set();
+    const inSel = (i) => !wlGuids.has(this.titleGuid(i)) || this.inSelection(this.titleGuid(i), sel);
     // Newest first by last watched time; the app sorts itself and does not rely on the server's order.
     const contAll = this.allow(cw).filter(inTab)
       .sort((a, b) => (b.lastViewedAt || 0) - (a.lastViewedAt || 0)).filter(once);
-    // Titles in progress outside the selected folders are hidden, but a link can show them (until the app restarts).
+    // Watchlist titles in progress outside the selected folders are hidden, but a link can show them (until the app restarts).
     const outside = sel.length ? contAll.filter(i => !inSel(i)).length : 0;
     const showAll = !!this.cwShowAll && outside > 0;
     const cont = showAll ? contAll : contAll.filter(inSel);
