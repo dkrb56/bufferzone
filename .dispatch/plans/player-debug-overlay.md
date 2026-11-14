@@ -106,3 +106,11 @@ The user sees a spinner every 35 to 40 s and cannot tell a slow network from a s
 
 ## Size
 6 files: `renderer/js/stats.js` (new, about 120 lines), `renderer/js/player.js` (about 20 added or changed lines), `renderer/styles.css` (about 6 lines), `webos/src/webos.css` (1 line), `renderer/index.html` (1 line), `README.md` (1 line).
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-14 23:56. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Which keyboard key toggles the box?: D
+2. Where is the control in the player?: a row "Playback stats" at the end of the Quality menu, with a check mark when on
+3. What about the Android app?: not in this task; the report lists it under Follow-ups

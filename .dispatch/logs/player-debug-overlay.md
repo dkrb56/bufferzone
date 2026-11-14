@@ -110,6 +110,14 @@ The user sees a spinner every 35 to 40 s and cannot tell a slow network from a s
 ## Size
 6 files: `renderer/js/stats.js` (new, about 120 lines), `renderer/js/player.js` (about 20 added or changed lines), `renderer/styles.css` (about 6 lines), `webos/src/webos.css` (1 line), `renderer/index.html` (1 line), `README.md` (1 line).
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-14 23:56. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Which keyboard key toggles the box?: D
+2. Where is the control in the player?: a row "Playback stats" at the end of the Quality menu, with a check mark when on
+3. What about the Android app?: not in this task; the report lists it under Follow-ups
+
 ## Stages
 
 ### STAGE: PLAN
@@ -211,28 +219,275 @@ Files: .dispatch/plans/player-debug-overlay.md
 Blockers: Which keyboard key toggles the box?; Where is the control in the player?; What about the Android app?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-14T22:56:09.205Z
+COMMAND: git status --short && git log --oneline -3 && date
+EXIT: 0
+OUTPUT:
+     M .dispatch/logs/player-debug-overlay.md
+     M .dispatch/plans/player-debug-overlay.md
+     M .dispatch/player-debug-overlay.session
+     M .dispatch/player-debug-overlay.state
+    3c102b7 Dispatch: 2 task files
+    64b1d22 Dispatch: 1 task file
+    fbb7a75 Dispatch: 5 task files
+    Sat Nov 14 23:56:10 CEST 2026
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-14T22:59:42.836Z
+COMMAND: node --check renderer/js/player.js; echo "exit $?"
+EXIT: 0
+OUTPUT:
+    exit 0
+
+### EVIDENCE: WORK 2026-11-14T22:59:43.442Z
+COMMAND: node --check renderer/js/stats.js; echo "exit $?"
+EXIT: 0
+OUTPUT:
+    exit 0
+
+### EVIDENCE: WORK 2026-11-14T22:59:43.891Z
+COMMAND: git diff --stat; git status --short
+EXIT: 0
+OUTPUT:
+     .dispatch/player-debug-overlay.session  |  1 +
+     .dispatch/player-debug-overlay.state    |  2 +-
+     README.md                               |  1 +
+     renderer/index.html                     |  1 +
+     renderer/js/player.js                   | 37 ++++++++++++++++++++++++++-------
+     renderer/styles.css                     |  6 +++++-
+     webos/src/webos.css                     |  1 +
+     9 files changed, 57 insertions(+), 10 deletions(-)
+     M .dispatch/logs/player-debug-overlay.md
+     M .dispatch/plans/player-debug-overlay.md
+     M .dispatch/player-debug-overlay.session
+     M .dispatch/player-debug-overlay.state
+     M README.md
+     M renderer/index.html
+     M renderer/js/player.js
+     M renderer/styles.css
+     M webos/src/webos.css
+    ?? .dispatch/logs/pause-resumes-after-restart.md
+    ?? .dispatch/plans/pause-resumes-after-restart.md
+    ?? renderer/js/stats.js
+
+### EVIDENCE: WORK 2026-11-14T23:00:17.095Z
+COMMAND: node "C:/Users/dani/.claude/jobs/dcdac26d/tmp/stats-smoke.js" renderer/js/stats.js; echo "exit $?"
+EXIT: 0
+OUTPUT:
+    -- direct play
+    Delivery   Direct Play
+    Server     direct internet · direct file
+    Video      1920×1080 · dropped 3 of 2400
+    Buffer     30.0 s ahead · 1 range
+    Segment    n/a (direct play)
+    Bitrate    file 9.0 Mbps
+    Stalls     1 · 0.0 s stalled · restarts 1 · ping HTTP 404 at 00:00:18
+    Last error 00:00:18 fragLoadError · HTTP 404 · segment #12 · fatal
+    -- TV player
+    Delivery   Converted · 8 Mbps · subtitles none
+    Server     direct internet · session abcdef · TV player
+    Video      1920×1080 · dropped 3 of 2400
+    Buffer     30.0 s ahead · 1 range
+    Segment    n/a (TV player)
+    Bitrate    n/a (TV player)
+    Stalls     1 · 0.0 s stalled · restarts 1 · ping HTTP 404 at 00:00:18
+    Last error 00:00:18 fragLoadError · HTTP 404 · segment #12 · fatal
+    OK: all stats checks passed
+    exit 0
+
+### EVIDENCE: WORK 2026-11-14T23:00:20.095Z
+COMMAND: cd webos && node build.js; echo "exit $?"
+EXIT: 0
+OUTPUT:
+    Create com.dkrb56.bufferzone_0.2.9_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+    exit 0
+
+### EVIDENCE: WORK 2026-11-14T23:00:26.121Z
+COMMAND: ls -la ../dist/com.dkrb56.bufferzone_0.2.9_all.ipk && grep -c "stats.js" build/app/index.html && grep -o "PlayerStats" build/app/js/player.js | head -2 && grep -n "p-stats" build/app/webos.css build/app/styles.css | head
+EXIT: 0
+OUTPUT:
+    -rw-r--r-- 1 dani 197121 271706 Nov 15 00:00 ../dist/com.dkrb56.bufferzone_0.2.9_all.ipk
+    1
+    PlayerStats
+    PlayerStats
+    build/app/webos.css:17:.p-stats { font-size: 17px; max-width: 760px; }   /* readable from the couch: the shim zooms by 1.5 */
+    build/app/styles.css:494:.p-stats { position: absolute; left: 22px; top: 150px; z-index: 7; pointer-events: none; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; max-width: 5…
+    build/app/styles.css:495:.p-stats .k { color: var(--muted); font-weight: 600; }
+    build/app/styles.css:496:.p-stats .v { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    build/app/styles.css:511:.tile .p-controls, .tile .skip-btn, .tile .next-card, .tile .p-pop, .tile .p-stats { display: none !important; }
+
+### EVIDENCE: WORK 2026-11-14T23:00:31.780Z
+COMMAND: cd /d/dev_projects/buffer-zone && node scripts/build-all.js > "C:/Users/dani/.claude/jobs/dcdac26d/tmp/build-all.log" 2>&1; echo "exit $?" >> "C:/Users/dani/.claude/jobs/dcdac26d/tmp/build-all.log"
+EXIT: 0
+OUTPUT:
+    Command running in background with ID: b12okmgu0. Output is being written to: C:\Users\dani\AppData\Local\Temp\claude\24e98aa09f2c58d6\475e5fa2-b7eb-47ce-8e8a-b0e829397f97\tasks\b12okmgu0.output. You …
+    Session cwd remains D:\dev_projects\buffer-zone\webos; directory changes made by the backgrounded command do not apply to subsequent commands.
+
+### EVIDENCE: WORK 2026-11-14T23:00:35.233Z
+COMMAND: cd /d/dev_projects/buffer-zone && git diff renderer/js/player.js renderer/index.html README.md webos/src/webos.css
+EXIT: 0
+OUTPUT:
+             arrowup: () => { this.video.volume = Math.min(1, this.video.volume + 0.05); },
+             arrowdown: () => { this.video.volume = Math.max(0, this.video.volume - 0.05); },
+             f: () => sofa.fullscreen(), m: () => { this.video.muted = !this.video.muted; },
+    -        n: () => this.playNext(), s: () => this.doSkip(),
+    +        n: () => this.playNext(), s: () => this.doSkip(), d: () => this.toggleStats(),
+             escape: () => {
+               if (this.pop.classList.contains('on')) return this.closePop();
+               if (!sofa.tv && window.innerHeight === screen.height && window.innerWidth === screen.width) sofa.fullscreen(false);
+    diff --git a/webos/src/webos.css b/webos/src/webos.css
+    index d2dd2a4..4ec6d57 100644
+    --- a/webos/src/webos.css
+    +++ b/webos/src/webos.css
+    @@ -14,6 +14,7 @@ label.switch:focus { outline-offset: 4px; border-radius: 12px; }
+     .kbd, .pal-foot, .home-left .sec-head .muted { display: none; }
+     .cw-row.sel:not(:focus) { background: none; }
+     .p-btn[title^="Fullscreen"] { display: none; }
+    +.p-stats { font-size: 17px; max-width: 760px; }   /* readable from the couch: the shim zooms by 1.5 */
+     
+     /* ---------- sign-in with plex.tv/link ---------- */
+     .link-url { font-size: 22px; font-weight: 700; color: var(--accent); margin: 4px 0 18px; }
+
+### EVIDENCE: WORK 2026-11-14T23:03:41.559Z
+COMMAND: git status --short
+EXIT: 0
+OUTPUT:
+     M .dispatch/logs/player-debug-overlay.md
+     M .dispatch/plans/player-debug-overlay.md
+     M .dispatch/player-debug-overlay.session
+     M .dispatch/player-debug-overlay.state
+     M README.md
+     M renderer/index.html
+     M renderer/js/player.js
+     M renderer/styles.css
+     M webos/src/webos.css
+    ?? .dispatch/logs/pause-resumes-after-restart.md
+    ?? .dispatch/plans/pause-resumes-after-restart.md
+    ?? renderer/js/stats.js
+
+### EVIDENCE: WORK 2026-11-14T23:03:44.990Z
+COMMAND: git add renderer/js/stats.js renderer/js/player.js renderer/index.html renderer/styles.css webos/src/webos.css README.md && git commit -q -m "player-debug-overlay: playback stats box in the player (key D, Quality menu)
+    
+    The box shows delivery and quality, server connection, buffer ahead,
+    the last segment with size, load time and HTTP status, stream and
+    network bitrate, stalls, restarts, the last session ping, dropped
+    frames and the last error with its time. The choice is saved in
+    settings.debugOverlay. While off, no timer, DOM update or hls.js
+    listener runs. Multi-view tiles never show it." && git log --oneline -1 && git status --short
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'renderer/styles.css', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'webos/src/webos.css', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'renderer/js/stats.js', LF will be replaced by CRLF the next time Git touches it
+    23efce8 player-debug-overlay: playback stats box in the player (key D, Quality menu)
+     M .dispatch/logs/player-debug-overlay.md
+     M .dispatch/plans/player-debug-overlay.md
+     M .dispatch/player-debug-overlay.session
+     M .dispatch/player-debug-overlay.state
+    ?? .dispatch/logs/pause-resumes-after-restart.md
+    ?? .dispatch/plans/pause-resumes-after-restart.md
+
+### EVIDENCE: WORK 2026-11-14T23:04:09.313Z
+COMMAND: date "+%Y-%m-%d %H:%M %Z"
+EXIT: 0
+OUTPUT:
+    2026-11-15 00:04 CEST
+
+### 2. WORK — ok
+The player has a playback stats box now. Press D on a keyboard, or select "Playback stats" at the end of the Quality menu, to show or hide it. The app saves the choice, so the box comes back after a restart of the app. All builds pass. Nobody played a video with the box yet.
+Files: renderer/js/stats.js, renderer/js/player.js, renderer/index.html, renderer/styles.css, webos/src/webos.css, README.md
 Blockers: none
 
 ## What changed
-none
+The player has a playback stats box now. Press D on a keyboard, or select "Playback stats" at the end of the Quality menu, to show or hide it. The app saves the choice, so the box comes back after a restart of the app. All builds pass. Nobody played a video with the box yet.
+
+- The box shows 8 lines: Delivery, Server, Video, Buffer, Segment, Bitrate, Stalls, Last error. It updates two times each second.
+- Delivery shows Direct Play, or Converted with the quality and the subtitle mode.
+- Server shows the connection (local network, direct internet or Plex relay), the first 6 characters of the transcode session and the player engine.
+- Video shows the picture size and the dropped frames of the total frames.
+- Buffer shows the seconds of video ahead of the play position.
+- Segment shows the last video segment: number, size in MB, load time in ms, age in seconds, and the last HTTP status of the stream. On direct play and on the TV player, it shows "n/a".
+- Bitrate shows the stream bitrate and the network estimate of hls.js, or the file bitrate on direct play.
+- Stalls shows the stall count, the stalled seconds, the session restarts, and the last session ping with its HTTP status and clock time.
+- Last error shows the clock time and the text of the last error: the hls.js error name, the HTTP code, the segment number and "fatal".
+- The box sits top left under the title area. It takes no clicks and no focus, so the mouse and the TV remote work as before.
+- When the box is off, no timer, no screen update and no hls.js listener runs. Only the counters change, in code that runs already.
+- Multi-view tiles never show the box.
+- On the TV the text is bigger (17 px before the 1.5 zoom).
+- The README key table has a row for D.
+- Commit: `23efce8` on `main`, not pushed.
+
+Small differences from the plan:
+- On the TV, a video element error goes to the restart code with a stand-in 404. The stats record the real video error after that call. Thus the box shows no false "HTTP 404" on the TV.
+- The Segment line shows "last HTTP n". This is the last HTTP status of any stream request: a loaded segment (200) or an hls.js error with a code (for example 404). The plan named only the segment status.
+- A ping without an HTTP answer shows "ping failed".
 
 ## Why
-none
+The user sees a spinner every 35 to 40 s and cannot tell a slow network from a server fault. The app log shows HTTP 404 for a segment and for the session ping, then a session restart. The box shows these facts while the video plays:
+- Many stalls with HTTP 200 segments, a low network estimate and a low buffer point to the network.
+- HTTP 404, "ping HTTP 404" and a restart count that goes up point to the server: it ended the transcode session.
+- Many dropped frames with a full buffer point to the computer or the TV.
 
 ## Files
-none
+- `renderer/js/stats.js` (new): the class `PlayerStats` with the counters, the hooks, the box and the update every 500 ms.
+- `renderer/js/player.js`: creates the stats object, calls the hooks at the spinner, at a new hls.js session, at a seek, at each error, at the 404 restart, at the ping, at exit. Adds the Quality menu row, `toggleStats()` and the D key.
+- `renderer/index.html`: loads `js/stats.js` before `js/player.js`.
+- `renderer/styles.css`: the `.p-stats` rules, and the tile rule that hides the box.
+- `webos/src/webos.css`: the bigger TV text size.
+- `README.md`: the D row in the player key table.
 
 ## Verification
-none
+- `node --check renderer/js/player.js; echo "exit $?"`: printed `exit 0`.
+evidence: yes
+- `node --check renderer/js/stats.js; echo "exit $?"`: printed `exit 0`.
+evidence: yes
+- `node "C:/Users/dani/.claude/jobs/dcdac26d/tmp/stats-smoke.js" renderer/js/stats.js; echo "exit $?"`: a scratch smoke script outside the repo, with a fake player, a fake DOM and a fake hls.js. It printed all 8 lines in three modes (converted with hls.js, direct play, TV player) and `OK: all stats checks passed`, `exit 0`. It checks: the first load is no stall, one spinner counts once, a user seek is no stall, the box off has no element and no listener, the box on adds both, subtitle segments do not change the Segment line, off removes element, timer and listener, a tile gets no box. The script is not in the repo; the job folder deletes it later.
+evidence: yes
+- `node build.js; echo "exit $?"` (in `webos/`): printed `Create com.dkrb56.bufferzone_0.2.9_all.ipk to D:\dev_projects\buffer-zone\dist`, `Success` and `exit 0`.
+evidence: yes
+- `ls -la ../dist/com.dkrb56.bufferzone_0.2.9_all.ipk && grep -c "stats.js" build/app/index.html && grep -o "PlayerStats" build/app/js/player.js | head -2 && grep -n "p-stats" build/app/webos.css build/app/styles.css | head` (in `webos/`): the `.ipk` exists (271706 bytes); the TV `index.html` has the `stats.js` tag; the lowered TV `player.js` has `PlayerStats`; the TV styles have all `.p-stats` rules.
+evidence: yes
+- `node scripts/build-all.js > "C:/Users/dani/.claude/jobs/dcdac26d/tmp/build-all.log" 2>&1; echo "exit $?" >> "C:/Users/dani/.claude/jobs/dcdac26d/tmp/build-all.log"`: the log ends with the 6 files `BufferZone-0.2.9-setup.exe`, `BufferZone-0.2.9-setup.exe.blockmap`, `latest.yml`, `BufferZone-0.2.9-portable.exe`, `BufferZone-tv-0.2.9.apk`, `com.dkrb56.bufferzone_0.2.9_all.ipk` and `exit 0`. Gradle printed `BUILD SUCCESSFUL`; all Android tasks were up to date, because no Android file changed.
+evidence: yes
+- `git status --short`: before the commit, the six files and only `.dispatch/` files changed. After the commit, only `.dispatch/` files are open.
+evidence: yes
+
+Nobody tried these things. A tester must do them:
+- Nobody played a video with the box on, on Windows or on a TV.
+- Nobody saw a real server 404 or a real stall with the box on.
+- Nobody checked the box size and place on a real TV screen from the couch.
+- Nobody checked that the TV remote never stops on the box.
+- Nobody checked the box over the "Playback failed" screen.
+
+Manual test for the tester (Windows):
+1. Set Quality to 8 Mbps and play a title.
+2. Press D. A dark box appears top left, under the title area.
+3. Look for 5 s. The Buffer line and the segment age change at least once each second. The Segment line shows a number, MB, ms and "last HTTP 200".
+4. Open the Quality menu. The last row "Playback stats" has a check mark.
+5. Disconnect the network for 15 s, then connect it again. The Stalls count goes up. The Last error line shows a clock time and an hls.js error name. When the server ended the session, the line shows HTTP 404 and the restarts go up by one.
+6. Press D. The box goes away completely. The menu row has no check mark.
+7. Press D again. Close the app, start it again and play a title. The box is there from the first second.
+8. Open Multi-view and add a stream. The tiles show no box.
+
+Manual test for the tester (TV):
+1. Play a title. Press down to show the controls.
+2. Go to the Quality chip, press OK, go down to "Playback stats", press OK. The box appears and the menu closes.
+3. Push the arrows in all directions. The focus never goes to the box.
+4. The Segment line shows "n/a (TV player)".
+5. Back closes the menu and the player as before.
 
 ## Follow-ups
-none
+- Android TV: no stats box in the Android app (Decision 3). This is a separate ticket.
+- A Settings row for the same switch (not in this task).
+- A key that writes the current stats into the app log (not in this task).
+- A quality, audio or subtitle change during playback reloads the stream outside `seekTo`. By the HTML media rules, `play()` on an empty video element sends a `waiting` event. Thus such a change probably counts as one stall. One `expectWait()` call at the start of `load()` in `renderer/js/player.js` prevents it. The plan did not include it, so the code does not have it.
+- The full build wrote new `0.2.9` installers and a new `latest.yml` into `dist/`. Release 0.2.9 exists already. Do not upload these files as 0.2.9; set a new version in `package.json` before the next release.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
-| claude-fable-5-1 | 386 | 207467 | 1523502 | 36467 | 1767822 |
+| claude-fable-5-1 | 418 | 225173 | 1732454 | 37045 | 1995090 |
+| claude-opus-5-5 | 48 | 572799 | 7376138 | 35884 | 7984869 |
