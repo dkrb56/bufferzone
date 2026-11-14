@@ -5,7 +5,7 @@ plan: .dispatch/plans/add-loading-indicator-when-search-is.md
 
 # add-loading-indicator-when-search-is: loading indicator in the search dialog while a search runs
 
-Finished 2026-11-14 22:29 CET. Commit `5b7c37a` on `main`, not pushed.
+Finished 2026-11-14 22:29 (+01:00). Commit `5b7c37a` on `main`, not pushed.
 
 The ring works on all three platforms and all builds pass. On Android, a late answer from an older search can switch the ring off too early. The plan design causes this. One decision below.
 

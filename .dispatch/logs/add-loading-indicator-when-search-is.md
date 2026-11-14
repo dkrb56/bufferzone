@@ -342,8 +342,16 @@ OUTPUT:
     - The search dialog now shows "Recent searches" when the field is empty. Each recent search is a row like a result row.
     - The arrows move between the rows. Enter, a mouse click or the TV OK key puts the words into the field and runs the search again. The dialog stays open.
 
+### EVIDENCE: WORK 2026-11-14T21:30:30.054Z
+COMMAND: date '+%Y-%m-%d %H:%M %Z %z'; cd /d/dev_projects/buffer-zone && git status --short && git log --oneline -2
+EXIT: 0
+OUTPUT:
+    2026-11-14 22:30 CEST +0100
+    5e582da Dispatch: 5 task files
+    5b7c37a add-loading-indicator-when-search-is: spinning ring in the search box while a search runs
+
 ### 2. WORK — blocked
-Finished 2026-11-14 22:29 CET. Commit `5b7c37a` on `main`, not pushed.
+Finished 2026-11-14 22:29 (+01:00). Commit `5b7c37a` on `main`, not pushed.
 Files: renderer/js/search.js, renderer/styles.css, android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
 Blockers: 1. Add the guards against late answers from older searches?
 
@@ -414,4 +422,4 @@ Deviations from the plan:
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-fable-5-1 | 322 | 144134 | 1053231 | 23404 | 1221091 |
-| claude-opus-5-5 | 37 | 406716 | 4237187 | 21938 | 4665878 |
+| claude-opus-5-5 | 40 | 414711 | 4763828 | 25569 | 5204148 |
