@@ -1,0 +1,10 @@
+--model
+fable
+--effort
+xhigh
+--permission-mode
+dontAsk
+--tools
+Read,Grep,Glob,Bash,Write
+--allowedTools
+Bash(git status*),Bash(git log *),Bash(git diff *),Write(//d/dev_projects/buffer-zone/.dispatch/plans/**)

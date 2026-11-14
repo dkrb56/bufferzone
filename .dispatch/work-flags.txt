@@ -1,0 +1,10 @@
+--model
+opus
+--effort
+xhigh
+--permission-mode
+auto
+--tools
+default
+--disallowedTools
+AskUserQuestion,SendMessage
