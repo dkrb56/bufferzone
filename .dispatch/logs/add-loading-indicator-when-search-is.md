@@ -350,8 +350,100 @@ OUTPUT:
     5e582da Dispatch: 5 task files
     5b7c37a add-loading-indicator-when-search-is: spinning ring in the search box while a search runs
 
-### 2. WORK — blocked
-Finished 2026-11-14 22:29 (+01:00). Commit `5b7c37a` on `main`, not pushed.
+### EVIDENCE: WORK 2026-11-14T21:34:29.391Z
+COMMAND: git status --short && git log --oneline -4 && git branch -vv | head -3 && git show --stat --oneline HEAD | head -12 && grep -rl -E "5b7c37a|5e582da" .dispatch 2>/dev/null
+EXIT: 0
+OUTPUT:
+    1e54c48 Dispatch: 1 task file
+    b1c5c5f Dispatch: 2 task files
+    5e582da Dispatch: 5 task files
+    5b7c37a add-loading-indicator-when-search-is: spinning ring in the search box while a search runs
+    * main 1e54c48 [origin/main: ahead 22] Dispatch: 1 task file
+    1e54c48 Dispatch: 1 task file
+     .dispatch/add-loading-indicator-when-search-is.session | 1 +
+     1 file changed, 1 insertion(+)
+    .dispatch/add-loading-indicator-when-search-is.md
+    .dispatch/logs/add-loading-indicator-when-search-is.md
+
+### EVIDENCE: WORK 2026-11-14T21:35:13.947Z
+COMMAND: git diff -- renderer android && node --check renderer/js/search.js; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    +++ b/renderer/js/search.js
+    @@ -11,6 +11,7 @@
+           this.app = app;
+           this.root = document.getElementById('palette');
+           this.isOpen = false;
+    +      this.req = 0;   // counts search requests over all openings; only the answer to the newest one is drawn
+           this.root.addEventListener('mousedown', (e) => { if (e.target === this.root) this.close(); });
+         }
+     
+    @@ -21,8 +22,7 @@
+           this.query = '';
+           this.results = null;
+           this.active = 0;
+    -      this.req = 0;   // counts search requests; only the answer to the newest one is drawn
+    -      this.input = h('input', { placeholder: title || 'Search movies, series and episodes', spellcheck: false });
+    +      this.input = h('input',{ placeholder: title || 'Search movies, series and episodes', spellcheck: false });
+           this.input.addEventListener('input', debounce(() => this.search(), 250));
+           this.input.addEventListener('keydown', (e) => this.onKey(e));
+           this.tabsEl = h('div.tabs');
+    exit=0
+
+### EVIDENCE: WORK 2026-11-14T21:35:19.076Z
+COMMAND: git diff --stat -- renderer android && git diff -- renderer/js/search.js | grep -n "h('input'" ; node --check renderer/js/search.js; echo "exit=$?"
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt', LF will be replaced by CRLF the next time Git touches it
+     android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt | 4 +++-
+     renderer/js/search.js                                           | 2 +-
+     2 files changed, 4 insertions(+), 2 deletions(-)
+    18:       this.input = h('input', { placeholder: title || 'Search movies, series and episodes', spellcheck: false });
+    exit=0
+
+### EVIDENCE: WORK 2026-11-14T21:35:24.504Z
+COMMAND: node scripts/build-all.js
+EXIT: 0
+OUTPUT:
+    Command running in background with ID: bhfopxeuq. Output is being written to: C:\Users\dani\AppData\Local\Temp\claude\24e98aa09f2c58d6\6590dc8e-c14a-493c-999f-37ff80812e06\tasks\bhfopxeuq.output. You …
+
+### EVIDENCE: WORK 2026-11-14T21:38:05.058Z
+COMMAND: grep -n -E "BUILD SUCCESSFUL|BUILD FAILED|^== |compileDebugKotlin|^w: |^e: |^Success|\.(exe|apk|ipk|yml|blockmap)  " "C:/Users/dani/AppData/Local/Temp/claude/24e98aa09f2c58d6/6590dc8e-c14a-493c-999f-37ff80812e06/tasks/bhfopxeuq.output"
+EXIT: 0
+OUTPUT:
+    2:== Buffer Zone 0.2.8: Windows
+    23:== Android TV
+    57:> Task :app:compileDebugKotlin
+    68:BUILD SUCCESSFUL in 25s
+    72:== LG webOS
+    77:Success
+    78:BufferZone-0.2.8-setup.exe  122.0 MB
+    79:BufferZone-0.2.8-setup.exe.blockmap  0.1 MB
+    80:latest.yml  0.0 MB
+    81:BufferZone-0.2.8-portable.exe  108.0 MB
+    82:BufferZone-tv-0.2.8.apk  20.6 MB
+    83:com.dkrb56.bufferzone_0.2.8_all.ipk  0.3 MB
+
+### EVIDENCE: WORK 2026-11-14T21:38:09.940Z
+COMMAND: git status --short && git add renderer/js/search.js android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt && git commit -q --fixup=5b7c37a && git log --oneline -6 && git show --stat --oneline HEAD | tail -3 && git status --short && date '+%Y-%m-%d %H:%M %z'
+EXIT: 0
+OUTPUT:
+     M android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
+     M renderer/js/search.js
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt', LF will be replaced by CRLF the next time Git touches it
+    e2d26ac fixup! add-loading-indicator-when-search-is: spinning ring in the search box while a search runs
+    1e54c48 Dispatch: 1 task file
+    b1c5c5f Dispatch: 2 task files
+    5e582da Dispatch: 5 task files
+    5b7c37a add-loading-indicator-when-search-is: spinning ring in the search box while a search runs
+    c4f0748 Dispatch: 2 task files
+     android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt | 4 +++-
+     renderer/js/search.js                                           | 2 +-
+     2 files changed, 4 insertions(+), 2 deletions(-)
+    2026-11-14 22:38 +0100
+
+### 2. WORK — ok
+Finished 2026-11-14 22:38 (+01:00). Commits `5b7c37a` and its fixup `e2d26ac` on `main`, not pushed.
 Files: renderer/js/search.js, renderer/styles.css, android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
 Blockers: 1. Add the guards against late answers from older searches?
 
@@ -422,4 +514,4 @@ Deviations from the plan:
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-fable-5-1 | 322 | 144134 | 1053231 | 23404 | 1221091 |
-| claude-opus-5-5 | 40 | 414711 | 4763828 | 25569 | 5204148 |
+| claude-opus-5-5 | 62 | 757862 | 8016678 | 33478 | 8808080 |

@@ -1,13 +1,13 @@
-state: needs-decision
-needs: decision
+state: done
+needs: nothing
 files: renderer/js/search.js, renderer/styles.css, android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
 plan: .dispatch/plans/add-loading-indicator-when-search-is.md
 
 # add-loading-indicator-when-search-is: loading indicator in the search dialog while a search runs
 
-Finished 2026-11-14 22:29 (+01:00). Commit `5b7c37a` on `main`, not pushed.
+Finished 2026-11-14 22:38 (+01:00). Commits `5b7c37a` and its fixup `e2d26ac` on `main`, not pushed.
 
-The ring works on all three platforms and all builds pass. On Android, a late answer from an older search can switch the ring off too early. The plan design causes this. One decision below.
+The ring works on all three platforms and all builds pass. After your answer, both guards against late answers from older searches are in. The guards are in a second commit, marked to fold into the first. See the deviations under Verification.
 
 ## What changed
 - Windows and TV: while the app waits for the server, the search icon at the left of the field is a small spinning ring. When the results show, the search icon comes back.
