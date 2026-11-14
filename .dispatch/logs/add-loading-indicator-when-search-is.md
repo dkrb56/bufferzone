@@ -442,10 +442,25 @@ OUTPUT:
      2 files changed, 4 insertions(+), 2 deletions(-)
     2026-11-14 22:38 +0100
 
+### EVIDENCE: WORK 2026-11-14T21:39:17.188Z
+COMMAND: head -n 4 .dispatch/add-loading-indicator-when-search-is.md && grep -c "^## Questions" .dispatch/add-loading-indicator-when-search-is.md; tail -n 4 .dispatch/add-loading-indicator-when-search-is.md; git status --short
+EXIT: 0
+OUTPUT:
+    state: done
+    needs: nothing
+    files: renderer/js/search.js, renderer/styles.css, android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
+    plan: .dispatch/plans/add-loading-indicator-when-search-is.md
+    0
+    ## Follow-ups
+    - Android, older than this task: when the user types again, the cancelled search still writes its result as an empty list. "No results." can flash while typing fast. The cause is the cancel that `runC…
+    - No reduced-motion rule for the ring. The big `.spinner` has none either, as the plan says.
+    - `dist/` now has builds with this change under the old version 0.2.8. Do not publish them as 0.2.8. Installed Windows apps update only to a higher version. Increase the version in `package.json` and …
+     M .dispatch/add-loading-indicator-when-search-is.md
+
 ### 2. WORK — ok
 Finished 2026-11-14 22:38 (+01:00). Commits `5b7c37a` and its fixup `e2d26ac` on `main`, not pushed.
 Files: renderer/js/search.js, renderer/styles.css, android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
-Blockers: 1. Add the guards against late answers from older searches?
+Blockers: none
 
 ## What changed
 - Windows and TV: while the app waits for the server, the search icon at the left of the field is a small spinning ring. When the results show, the search icon comes back.
@@ -538,4 +553,4 @@ git rebase -i --autosquash c4f0748
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-fable-5-1 | 322 | 144134 | 1053231 | 23404 | 1221091 |
-| claude-opus-5-5 | 67 | 765148 | 9072868 | 39662 | 9877745 |
+| claude-opus-5-5 | 71 | 766791 | 9789084 | 40764 | 10596710 |
