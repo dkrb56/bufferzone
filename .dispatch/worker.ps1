@@ -1,7 +1,7 @@
 <#
 Dispatch worker script. Triage starts and resumes a worker only through this file.
   plan <ticket-id>              start the plan run (plan-flags.txt); state: planning
-  approve <ticket-id>           resume the same session for the work run (work-flags.txt); state: working
+  approve <ticket-id>           start the work run as a new session (work-flags.txt) that reads the brief and the plan; state: working
   reply <ticket-id> <message>   send the user's words to the worker; the state picks the options
   status                        the tasks with their state and the state of their worker
   stop <ticket-id>              stop the worker of a task; state: stopped
@@ -73,19 +73,40 @@ function Worker-State($Worker) {
 # so the agent view of Claude Code tells them apart. A worker of an older script has the bare id.
 function Run-Name([string]$Run) { "$Id [$Run]" }
 
-# The newest worker of a ticket, of either run.
-function Find-Worker($Workers, [string]$Ticket) {
+# The newest worker of a ticket, of either run. With a run: the newest worker named "<ticket> [<run>]"
+# when one exists, else the newest of any name (a worker of an older script has the bare id). The
+# plan run and the work run are two sessions (ticket work-fresh-session), and a follow-up of the work
+# run must resume the work session, never the plan session.
+function Find-Worker($Workers, [string]$Ticket, [string]$Run) {
   $names = @($Ticket, "$Ticket [plan]", "$Ticket [work]")
   $mine = @($Workers | Where-Object { $names -contains $_.name } | Sort-Object { $_.startedAt })
+  if ($Run) {
+    $named = @($mine | Where-Object { $_.name -eq "$Ticket [$Run]" })
+    if ($named.Count -gt 0) { $mine = $named }
+  }
   if ($mine.Count -eq 0) { return $null }
   $mine[$mine.Count - 1]
 }
 
-# A resume of a session that still runs starts a copy of it. Only a finished session is resumed,
-# and never one of a task that was stopped: a stopped task is ended, the next task starts clean.
-function Resume-Target {
+# Approve starts the work run as a new session and resumes nothing. It still refuses a stopped task,
+# and a worker of the ticket that still runs or waits at a prompt: the plan run must end first.
+# Without a worker of the ticket in the list (an ended or cleaned plan session) approve goes on.
+function Approve-Check {
   if ((Get-State) -eq 'stopped') { Refuse "the task $Id was stopped; start a new task" }
   $worker = Find-Worker (Get-Workers) $Id
+  if ($null -eq $worker) { return }
+  $state = Worker-State $worker
+  if ($state -eq 'working' -or $state -eq 'blocked') {
+    Refuse "the worker $Id still runs ($state); the work run starts when it has ended. A permission prompt is answered in the agent view: claude attach $($worker.id)"
+  }
+}
+
+# A resume of a session that still runs starts a copy of it. Only a finished session is resumed,
+# and never one of a task that was stopped: a stopped task is ended, the next task starts clean.
+# $Run picks the session of that run.
+function Resume-Target([string]$Run) {
+  if ((Get-State) -eq 'stopped') { Refuse "the task $Id was stopped; start a new task" }
+  $worker = Find-Worker (Get-Workers) $Id $Run
   if ($null -eq $worker) { Refuse "no worker named $Id" }
   $state = Worker-State $worker
   if ($state -eq 'working' -or $state -eq 'blocked') {
@@ -119,8 +140,9 @@ function Run-Claude([string[]]$Arguments, [string]$StateOnFailure, [string]$Bran
 # The session file of a ticket (ticket task-tokens): one line "<run> <session id>" per Claude session
 # of the task, in order. Dispatch sums the tokens of these sessions for the task card. The worker of
 # the job id that claude printed gives the session id; without it, the newest worker of the run name.
-# A resume of the same session adds nothing; a resume that starts a copy adds the copy. A missing id
-# is a warning, no refusal: the run has started.
+# The work run is its own session (ticket work-fresh-session), so Approve adds its line. A resume of
+# the same session adds nothing; a resume that starts a copy adds the copy. A missing id is a
+# warning, no refusal: the run has started.
 function Session-Path { Join-Path $Reports "$Id.session" }
 function Save-Session([string]$Run, [string[]]$Printed) {
   $words = @($Printed | ForEach-Object { "$_" -split '\s+' } | Where-Object { $_ })
@@ -404,11 +426,13 @@ switch ($Verb) {
       $dirty = @(& git -C $Project status --porcelain -- . ':(exclude).dispatch')
       if ($dirty.Count -gt 0) { Refuse "the working tree of $Project has uncommitted changes; commit or stash them first (after Setup pipeline, these are the setup files: Commit to git in the Setup pipeline window):`n$($dirty -join "`n")" }
     }
-    $worker = Resume-Target
+    Approve-Check
     $flags = Read-Flags 'work-flags.txt'
-    # The prompt names the report file: a worker planned with the paths of its plan run.
+    # The work run is a new session (ticket work-fresh-session): the prompt names the ticket, the
+    # brief, the plan and the report file, and the files are its whole input.
+    $brief = Join-Path $Reports "briefs\$Id.md"
     $report = Join-Path $Reports "$Id.md"
-    $prompt = "Plan approved: $plan. Execute it. A deviation goes into the report, not into the code. Write the report to $report."
+    $prompt = "Plan approved: $plan. This is the work run of ticket $Id. Read the brief $brief and the plan first: they are the whole context of this run, and the sections User decisions and Checks chosen of the plan hold the choices of the user. Execute the plan. A deviation goes into the report, not into the code. Write the report to $report."
     # The checks that the user chose at Approve (ticket task-checks): one line per check, the name, a
     # tab and the command. A quote of a name becomes an apostrophe, as in a reply.
     $chosen = Join-Path $Reports "$Id.checks"
@@ -425,10 +449,11 @@ switch ($Verb) {
       $prompt += " Task branches is on: the checkout is on the branch $((Read-BranchFile $Id).branch) of this task. Commit there; switch no branch, merge nothing, push nothing."
     }
     Set-State 'approved'
-    # A resume with other options than the saved ones of the session starts a copy of it (Claude
-    # Code 2.1.319). The name keeps the copy with the task and marks it as the work run: Dispatch and
-    # this script find a worker by its name.
-    $printed = Run-Claude (@($prompt, '--resume', $worker.sessionId, '--bg', '--name', (Run-Name 'work')) + $flags) 'planning' $back
+    # A new session, no resume: the work run gets the brief, the plan and the decisions of the user,
+    # and nothing of the context of the plan run (ticket work-fresh-session); the model switch stays.
+    # The name keeps the session with the task and marks it as the work run: Dispatch and this script
+    # find a worker by its name.
+    $printed = Run-Claude (@($prompt, '--bg', '--name', (Run-Name 'work')) + $flags) 'planning' $back
     Set-State 'working'
     Save-Session 'work' $printed
   }
@@ -439,8 +464,8 @@ switch ($Verb) {
     # line break a space, so the text can never cut or merge the arguments after it.
     $text = ((($Message -join ' ') -replace '"', "'") -replace "`r?`n", ' ').Trim()
     if (-not $text) { Refuse 'reply needs a message' }
-    $worker = Resume-Target
     $run = if ((Get-State) -eq 'planning') { 'plan' } else { 'work' }
+    $worker = Resume-Target $run
     $flags = Read-Flags "$run-flags.txt"
     # Task branches: a work run goes on on the branch of its task, also after Dispatch switched back.
     $branch = if ($run -eq 'work' -and (Branches-On)) { Read-BranchFile $Id } else { $null }
