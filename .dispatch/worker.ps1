@@ -11,6 +11,8 @@ Exit codes: 0 done, 2 refused (the reason is on stderr), 124 a measuring command
 time limit, other: the exit code of claude or of the measuring command.
 The gate command of merge gets DISPATCH_TICKET (the ticket id) and DISPATCH_CHECKS (the path of
 <ticket-id>.checks: the checks that the user chose, one line each, the name, a tab and the command).
+The script finds the project from its own folder, and the options files name paths relative to the
+project, so a clone on another path or computer needs no change.
 #>
 param(
   [Parameter(Mandatory = $true, Position = 0)]
@@ -36,11 +38,19 @@ function Need-Id {
   if (-not $Id) { Refuse "the verb $Verb needs a ticket id" }
 }
 
-# The options of a run, one argument per line. Setup pipeline writes the files.
+# The options of a run, one argument per line. Setup pipeline writes the files. The settings file
+# after --settings is relative to the project; claude gets it as an absolute path.
 function Read-Flags([string]$Name) {
   $file = Join-Path $Reports $Name
   if (-not (Test-Path -LiteralPath $file)) { Refuse "$file is missing; run Setup pipeline" }
-  @(Get-Content -LiteralPath $file | Where-Object { $_.Trim() -ne '' })
+  $lines = @(Get-Content -LiteralPath $file | Where-Object { $_.Trim() -ne '' })
+  for ($at = 1; $at -lt $lines.Count; $at++) {
+    $value = $lines[$at].Trim()
+    if ($lines[$at - 1].Trim() -eq '--settings' -and -not [IO.Path]::IsPathRooted($value)) {
+      $lines[$at] = [IO.Path]::GetFullPath((Join-Path $Project $value))
+    }
+  }
+  $lines
 }
 
 function State-Path { Join-Path $Reports "$Id.state" }
@@ -107,7 +117,7 @@ function Approve-Check {
 function Resume-Target([string]$Run) {
   if ((Get-State) -eq 'stopped') { Refuse "the task $Id was stopped; start a new task" }
   $worker = Find-Worker (Get-Workers) $Id $Run
-  if ($null -eq $worker) { Refuse "no worker named $Id" }
+  if ($null -eq $worker) { Refuse "no worker named $Id on this computer. A run that started on another computer cannot be resumed here: start the task again, or answer on the computer where it ran" }
   $state = Worker-State $worker
   if ($state -eq 'working' -or $state -eq 'blocked') {
     Refuse "the worker $Id still runs ($state); a resume now would start a copy. A permission prompt is answered in the agent view: claude attach $($worker.id)"
