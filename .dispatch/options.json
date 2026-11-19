@@ -15,6 +15,6 @@
   "fullChecksAfter": 0,
   "pushAfterMerge": false,
   "autoMerge": false,
-  "ticketsStartPlans": false,
+  "ticketsStartPlans": true,
   "noTriage": true
 }
