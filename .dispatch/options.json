@@ -5,7 +5,7 @@
   "measureBeforePlan": false,
   "taskBranches": false,
   "ignoreTasks": false,
-  "notesInGit": false,
+  "notesInGit": true,
   "paused": false,
   "startPlainPlans": true,
   "checksAtGate": false,
