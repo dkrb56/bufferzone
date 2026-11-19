@@ -456,6 +456,23 @@
           return this.seekTo(this.time() + 0.01, { restart: true });
         }
       }
+      // A segment the transcoder sent without media ("Found no media") stays broken in this session.
+      // Start a new session at the same position; if the same segment breaks again, start just after it.
+      // Shares the restart limit with the 404 case above.
+      if (data.details === Hls.ErrorDetails.FRAG_PARSING_ERROR) {
+        const now = Date.now();
+        this.restarts = (this.restarts || []).filter(t => now - t < 60000);
+        if (this.restarts.length < 2) {
+          this.restarts.push(now);
+          this.stats.restart();
+          const f = data.frag;
+          const again = f && this.parseRestartAt != null && Math.abs(this.parseRestartAt - f.start) < 0.5;
+          const t = again ? f.end + 0.1 : this.time() + 0.01;
+          this.parseRestartAt = f ? f.start : null;
+          sofa.log('hls parse error, restarting at', Math.round(t), { sn: f?.sn, start: f?.start, end: f?.end, skip: !!again });
+          return this.seekTo(t, { restart: true });
+        }
+      }
       if (data.response?.code === 400 || data.response?.code === 403) {
         this.fail(new Error('The server refused the stream. Your friend may not allow conversion (transcoding) for shared users. Try "Direct Play" in Quality.'));
       } else {
