@@ -9,3 +9,11 @@ android/local.properties
 webos/build/
 webos/node_modules/
 .claude/
+# Dispatch: the project notes go into git (setting "Project notes in git"); the rest of .claude stays on this computer
+!.claude/
+.claude/*
+!.claude/memory.md
+!.claude/mistakes.md
+!.claude/agents-override.md
+!.claude/triage.md
+!.claude/settings.json
