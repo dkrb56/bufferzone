@@ -6,3 +6,4 @@
 {"op":"status","ref":"add-loading-indicator-when-search-is","ts":"2026-11-14T21:09:05.025Z","status":"in_progress","order":null}
 {"op":"close","ref":"make-windows-installer","ts":"2026-11-14T21:10:57.573Z","resolution":"wontfix","note":"triage answered without a task","order":null}
 {"op":"close","ref":"add-loading-indicator-when-search-is","ts":"2026-11-14T21:38:34.771Z","resolution":"done","note":"done","order":null}
+{"op":"open","id":"playback-issue-not-sure-why","ts":"2026-11-19T23:20:16.824Z","title":"Playback issue - not sure why","type":"feature","summary":"C:\\Users\\dani\\AppData\\Roaming\\com.dkrb56.dispatch\\pasted\\paste-1795130414425.png playback issue - not sure why","tags":[],"status":"triage","order":null,"level":"medium"}
