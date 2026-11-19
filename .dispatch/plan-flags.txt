@@ -5,6 +5,8 @@ xhigh
 --permission-mode
 dontAsk
 --tools
-Read,Grep,Glob,Bash,Write
+Read,Grep,Glob,Bash,WebFetch,Write
 --allowedTools
-Bash(git status*),Bash(git log *),Bash(git diff *),Write(.dispatch/plans/**)
+WebFetch,Edit(.dispatch/plans/**)
+--disallowedTools
+Edit(.dispatch/briefs/**),Bash(powershell -ExecutionPolicy Bypass -File .dispatch/worker.ps1 *)

@@ -1,0 +1,20 @@
+{
+  "shortReports": true,
+  "triageName": true,
+  "autoApprove": false,
+  "measureBeforePlan": false,
+  "taskBranches": false,
+  "ignoreTasks": false,
+  "notesInGit": false,
+  "paused": false,
+  "startPlainPlans": false,
+  "checksAtGate": false,
+  "pickChecks": false,
+  "fullChecksNightly": false,
+  "fullChecksAt": 0,
+  "fullChecksAfter": 0,
+  "pushAfterMerge": false,
+  "autoMerge": false,
+  "ticketsStartPlans": false,
+  "noTriage": true
+}
