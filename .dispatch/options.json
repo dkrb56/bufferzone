@@ -7,14 +7,14 @@
   "ignoreTasks": false,
   "notesInGit": false,
   "paused": false,
-  "startPlainPlans": false,
+  "startPlainPlans": true,
   "checksAtGate": false,
   "pickChecks": false,
   "fullChecksNightly": false,
   "fullChecksAt": 0,
   "fullChecksAfter": 0,
-  "pushAfterMerge": false,
-  "autoMerge": false,
+  "pushAfterMerge": true,
+  "autoMerge": true,
   "ticketsStartPlans": true,
   "noTriage": true
 }
