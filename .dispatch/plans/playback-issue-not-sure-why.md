@@ -94,3 +94,16 @@ The screenshot shows the desktop player with "Playback failed / Stream error: fr
 model: opus
 effort: medium
 The code change is small, but the work run must read the log and judge whether it matches the planned cause before it writes code.
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-20 00:23. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. If the same spot breaks again after a reload, should the app skip past it?: yes, on the second try it jumps a few seconds past the broken piece
+2. Where does the check script live?: in the job's temporary folder; the report lists its runs; nothing new in the project
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-19 23:23 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests
