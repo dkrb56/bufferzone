@@ -200,9 +200,8 @@ fun SettingsScreen(s: Screen.Settings) {
                                     .onFailure { App.show("Could not check for updates. Try again later.") }
                             }
                         }) }
-                        App.updateVersion?.let { v -> item { SettingRow("Version $v is available", "Download: github.com/dkrb56/bufferzone/releases/latest", "Open", {
-                            runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/dkrb56/bufferzone/releases/latest"))) }
-                                .onFailure { App.show("Open the address on a phone or computer.") }
+                        App.updateVersion?.let { v -> item { SettingRow("Version $v is available", "Downloads and installs it. The TV asks you to confirm.", Updater.progress?.let { if (it >= 0) "Downloading $it%" else "Downloading…" } ?: "Update", {
+                            if (Updater.progress == null) Updater.install(ctx.applicationContext, v)
                         }) } }
                         item { SettingRow("About", "MIT License. Not affiliated with or endorsed by Plex Inc.", "Open-source licenses", { showLicenses = true }) }
                     }
