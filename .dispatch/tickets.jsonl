@@ -10,3 +10,4 @@
 {"op":"status","ref":"playback-issue-not-sure-why","ts":"2026-11-19T23:20:23.291Z","status":"in_progress","order":null}
 {"op":"close","ref":"playback-issue-not-sure-why","ts":"2026-11-19T23:25:17.764Z","resolution":"done","note":"done","order":null}
 {"op":"open","id":"when-i-add-show-to-wathclist-there","ts":"2026-11-20T20:22:56.355Z","title":"When i add show to wathclist there should also be an option to add it…","type":"feature","summary":"C:\\Users\\dani\\AppData\\Roaming\\com.dkrb56.dispatch\\pasted\\paste-1795206151480.png when i add show to wathclist there should also be an option to add it to the folder","tags":[],"status":"triage","order":null,"level":"medium"}
+{"op":"status","ref":"when-i-add-show-to-wathclist-there","ts":"2026-11-20T20:23:00.813Z","status":"in_progress","order":null}
