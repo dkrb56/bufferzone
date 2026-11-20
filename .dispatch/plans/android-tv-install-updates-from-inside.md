@@ -90,3 +90,17 @@ Today the row "Version X is available" in Settings → Account (`SettingsScreen.
 model: sonnet
 effort: high
 The code is small, but the Android install steps have several traps, and the run cannot test them without a TV.
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-20 22:15. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Should the note at app start change?: No, keep the short note that points to Settings
+2. Should the button that opens the download page in a browser stay?: No, Update replaces it
+3. What happens when the TV does not yet allow Buffer Zone to install apps?: The app opens that TV setting for you; then you press Update again
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-20 21:15 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests

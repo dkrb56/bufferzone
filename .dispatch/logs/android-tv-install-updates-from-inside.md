@@ -94,6 +94,20 @@ model: sonnet
 effort: high
 The code is small, but the Android install steps have several traps, and the run cannot test them without a TV.
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-20 22:15. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Should the note at app start change?: No, keep the short note that points to Settings
+2. Should the button that opens the download page in a browser stay?: No, Update replaces it
+3. What happens when the TV does not yet allow Buffer Zone to install apps?: The app opens that TV setting for you; then you press Update again
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-20 21:15 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests
+
 ## Stages
 
 ### STAGE: PLAN
@@ -159,28 +173,139 @@ Files: .dispatch/plans/android-tv-install-updates-from-inside.md
 Blockers: Should the note at app start change?; Should the button that opens the download page in a browser stay?; What happens when the TV does not yet allow Buffer Zone to install apps?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-20T21:15:46.346Z
+COMMAND: cd /d/dev_projects/buffer-zone/android && JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' ./gradlew.bat assembleDebug 2>&1 | tail -25
+EXIT: 0
+OUTPUT:
+    > Task :app:compileDebugKotlin
+    w: file:///D:/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone/MultiView.kt:112:36 'val Icons.Outlined.ViewQuilt: ImageVector' is deprecated. Use the AutoMirrored version at Ic…
+    w: file:///D:/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone/MultiView.kt:130:95 'val Icons.Outlined.VolumeOff: ImageVector' is deprecated. Use the AutoMirrored version at Ic…
+    w: file:///D:/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt:30:106 Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'Any?'.
+    w: file:///D:/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt:31:109 Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'Any?'.
+    w: file:///D:/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt:32:112 Only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'Any?'.
+    
+    > Task :app:compileDebugJavaWithJavac NO-SOURCE
+    > Task :app:dexBuilderDebug
+    > Task :app:processDebugJavaRes UP-TO-DATE
+    > Task :app:mergeDebugJavaResource UP-TO-DATE
+    > Task :app:mergeDebugGlobalSynthetics
+    > Task :app:mergeProjectDexDebug
+    > Task :app:packageDebug
+    > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+    > Task :app:assembleDebug
+    
+    BUILD SUCCESSFUL in 1m 33s
+    37 actionable tasks: 9 executed, 28 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-20T21:17:25.909Z
+COMMAND: cd /d/dev_projects/buffer-zone && grep -rl "android.permission.REQUEST_INSTALL_PACKAGES" android/app/build/intermediates/merged_manifests/debug; echo "--"; grep -c "ACTION_VIEW" android/app/src/main/java/com/dkrb56/bufferzone/SettingsScreen.kt; echo "--diff"; git diff --stat HEAD -- android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt renderer webos main.js preload.js package.json; echo "--status"; git status --short; echo "--adb"; (adb devices 2>&1 || echo no adb)
+EXIT: 0
+OUTPUT:
+    android/app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+    --
+    0
+    --diff
+    --status
+     M .dispatch/android-tv-install-updates-from-inside.models
+     M .dispatch/android-tv-install-updates-from-inside.session
+     M .dispatch/android-tv-install-updates-from-inside.state
+     M .dispatch/briefs/android-tv-install-updates-from-inside.md
+     M .dispatch/logs/android-tv-install-updates-from-inside.md
+     M .dispatch/plans/android-tv-install-updates-from-inside.md
+     M android/app/src/main/AndroidManifest.xml
+     M android/app/src/main/java/com/dkrb56/bufferzone/SettingsScreen.kt
+    ?? .dispatch/android-tv-install-updates-from-inside.checks
+    ?? android/app/src/main/java/com/dkrb56/bufferzone/Updater.kt
+    --adb
+    List of devices attached
+    192.168.50.60:5555	device
+    emulator-5554	device
+
+### EVIDENCE: WORK 2026-11-20T21:17:32.679Z
+COMMAND: for d in 192.168.50.60:5555 emulator-5554; do echo "== $d"; adb -s $d shell getprop ro.product.model; adb -s $d shell getprop ro.build.characteristics; adb -s $d shell getprop ro.build.version.sdk; adb -s $d shell pm list packages com.dkrb56.bufferzone; adb -s $d shell dumpsys package com.dkrb56.bufferzone | grep -m2 versionName; done; grep '"version"' package.json
+EXIT: 0
+OUTPUT:
+    == 192.168.50.60:5555
+    2021/22 Philips UHD Android TV
+    nosdcard,tv
+    30
+    package:com.dkrb56.bufferzone
+        versionName=0.1.0
+    == emulator-5554
+    sdk_gphone64_x86_64
+    emulator
+    36
+      "version": "0.2.10",
+
+### EVIDENCE: WORK 2026-11-20T21:17:45.461Z
+COMMAND: sed -i 's/"version": "0.2.10"/"version": "0.2.0"/' package.json && cd android && JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' ./gradlew.bat assembleDebug 2>&1 | grep -E "BUILD|error" ; cd .. && git checkout -- package.json && git diff --stat package.json && adb -s emulator-5554 install -r -d android/app/build/outputs/apk/debug/app-debug.apk && adb -s emulator-5554 shell am start -n com.dkrb56.bufferzone/.MainActivity && sleep 5 && adb -s emulator-5554 exec-out screencap -p > "$CLAUDE_JOB_DIR/tmp/s1.png"; echo $CLAUDE_JOB_DIR
+EXIT: 0
+OUTPUT:
+    BUILD SUCCESSFUL in 23s
+    Performing Streamed Install
+    Success
+    Starting: Intent { cmp=com.dkrb56.bufferzone/.MainActivity }
+    C:\Users\dani\.claude\jobs\c4f75da7
+
+### EVIDENCE: WORK 2026-11-20T21:18:23.309Z
+COMMAND: adb -s emulator-5554 uninstall com.dkrb56.bufferzone; git diff --stat package.json; git add android/app/src/main/AndroidManifest.xml android/app/src/main/java/com/dkrb56/bufferzone/SettingsScreen.kt android/app/src/main/java/com/dkrb56/bufferzone/Updater.kt && git commit -m "android-tv-install-updates-from-inside: Android TV downloads and installs a new version from Settings" -- android/app/src/main/AndroidManifest.xml android/app/src/main/java/com/dkrb56/bufferzone/SettingsScreen.kt android/app/src/main/java/com/dkrb56/bufferzone/Updater.kt && git show --stat --oneline HEAD
+EXIT: 0
+OUTPUT:
+    Success
+    warning: in the working copy of 'android/app/src/main/AndroidManifest.xml', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/SettingsScreen.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/Updater.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/AndroidManifest.xml', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/SettingsScreen.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/Updater.kt', LF will be replaced by CRLF the next time Git touches it
+    [main 7ec95bd] android-tv-install-updates-from-inside: Android TV downloads and installs a new version from Settings
+     3 files changed, 102 insertions(+), 3 deletions(-)
+     create mode 100644 android/app/src/main/java/com/dkrb56/bufferzone/Updater.kt
+    7ec95bd android-tv-install-updates-from-inside: Android TV downloads and installs a new version from Settings
+     android/app/src/main/AndroidManifest.xml           |  2 +
+     .../java/com/dkrb56/bufferzone/SettingsScreen.kt   |  5 +-
+     .../src/main/java/com/dkrb56/bufferzone/Updater.kt | 98 ++++++++++++++++++++++
+     3 files changed, 102 insertions(+), 3 deletions(-)
+
+### 2. WORK — ok
+On Android TV, the row "Version X is available" in Settings → Account now shows "Update". The browser link is gone.
+Files: android/app/src/main/AndroidManifest.xml, android/app/src/main/java/com/dkrb56/bufferzone/SettingsScreen.kt, android/app/src/main/java/com/dkrb56/bufferzone/Updater.kt
 Blockers: none
 
 ## What changed
-none
+- On Android TV, the row "Version X is available" in Settings → Account now shows "Update". The browser link is gone.
+- One press downloads `BufferZone-tv-<X>.apk` of release `v<X>` from GitHub. The row shows "Downloading N%".
+- Then the Android install screen asks to confirm.
+- When "Install unknown apps" is off, the app opens that TV setting and shows a message. The user then presses Update again.
+- A failed download shows "Download failed. Try again later." and the row goes back to "Update". A failed install shows "Update failed: <reason>".
+- Commit: 7ec95bd on `main`.
 
 ## Why
-none
+Many TVs have no browser, so the old Open button could not update the app.
 
 ## Files
-none
+- `AndroidManifest.xml`: permission `REQUEST_INSTALL_PACKAGES` and the receiver `UpdateReceiver`.
+- `Updater.kt` (new): `Updater` (download into a `PackageInstaller` session, progress state) and `UpdateReceiver` (starts the confirm screen, reports failures).
+- `SettingsScreen.kt`: the update row.
 
 ## Verification
-none
+- `cd android && JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' ./gradlew.bat assembleDebug` ended with `BUILD SUCCESSFUL` (also for the 0.2.0 test build).
+- `grep -rl "android.permission.REQUEST_INSTALL_PACKAGES" android/app/build/intermediates/merged_manifests/debug` printed one path.
+- `grep -c "ACTION_VIEW" .../SettingsScreen.kt` printed `0`.
+- `git diff --stat HEAD -- AppState.kt renderer webos main.js preload.js package.json` printed nothing.
+- `git status --short` before the commit showed only the three task files plus `.dispatch/` files. The commit holds only the three files.
+- Check "android/gradle tests" was not chosen. The project has no Android unit tests.
+- Manual test: not finished. I built a 0.2.0 build (`package.json` changed for that build only, then restored; `git diff --stat package.json` is empty) and installed it on the emulator `emulator-5554`. The app stopped at "Sign in with Plex". I have no Plex account, so I could not reach Settings. I removed the test install from the emulator.
 
 ## Follow-ups
-none
+- Nobody tried the update flow itself. A tester must run the two manual tests of the plan on a TV or on a signed-in device: the install, and the failed download with the cable pulled. The "Install unknown apps" screen, the confirm screen and the signing match are untested.
+- The feature works only after a release: bump the version in `package.json`, build and publish a release with `BufferZone-tv-<version>.apk`. The version that brings this button must still be installed the old way once.
+- The release APK is a debug build signed with the debug key of the build machine. An APK built on another machine has another key, and the install then fails with a conflict. Keep one build machine for releases.
+- The app cannot update itself on a TV that has Buffer Zone from a different key (for example 0.1.0 on the Philips TV, if it came from another machine).
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-opus-5-5 | 24 | 126531 | 1017169 | 13454 | 1157178 |
+| claude-sonnet-5-5 | 24 | 41233 | 687138 | 7768 | 736163 |
