@@ -51,15 +51,28 @@ function Need-Id {
 }
 
 # The options of a run, one argument per line. Setup pipeline writes the files. The settings file
-# after --settings is relative to the project; claude gets it as an absolute path.
+# after --settings is relative to the project; claude gets it as an absolute path. Claude Code takes
+# a relative rule path from the current folder of the shell, and a cd moves it (ticket
+# a-plan-run-that-ends-without-a-plan), so each Edit rule after --allowedTools and --disallowedTools
+# with a relative path gets the project folder in front: D:\p and Edit(.dispatch/plans/**) give
+# Edit(//d/p/.dispatch/plans/**).
 function Read-Flags([string]$Name) {
   $file = Join-Path $Reports $Name
   if (-not (Test-Path -LiteralPath $file)) { Refuse "$file is missing; run Setup pipeline" }
   $lines = @(Get-Content -LiteralPath $file | Where-Object { $_.Trim() -ne '' })
+  $root = $Project -replace '\\', '/'
+  $rulePrefix = if ($root -match '^([A-Za-z]):/(.*)$') { '//' + $Matches[1].ToLowerInvariant() + '/' + $Matches[2].TrimEnd('/') } else { '' }
   for ($at = 1; $at -lt $lines.Count; $at++) {
     $value = $lines[$at].Trim()
-    if ($lines[$at - 1].Trim() -eq '--settings' -and -not [IO.Path]::IsPathRooted($value)) {
+    $option = $lines[$at - 1].Trim()
+    if ($option -eq '--settings' -and -not [IO.Path]::IsPathRooted($value)) {
       $lines[$at] = [IO.Path]::GetFullPath((Join-Path $Project $value))
+    }
+    if ($rulePrefix -and ($option -eq '--allowedTools' -or $option -eq '--disallowedTools')) {
+      $rules = foreach ($rule in $value -split ',') {
+        if ($rule -match '^Edit\((?![/~])(.+)\)$') { "Edit($rulePrefix/$($Matches[1] -replace '^\./', ''))" } else { $rule }
+      }
+      $lines[$at] = $rules -join ','
     }
   }
   $lines
@@ -102,12 +115,21 @@ function Get-Workers {
 
 # Claude Code marks a session that ended its turn with a question as blocked, like a session at a
 # permission prompt. Only the prompt waits (status waiting); the question is in the report, and
-# the session is done: a resume of it is no copy.
+# the session is done: a resume of it is no copy. Claude Code can also keep a session at working
+# after its turn ended (status idle). A run "<ticket> [plan]" or "<ticket> [work]" that is idle and
+# wrote its plan or report at or after its start is done. Busy and shell still run.
 function Worker-State($Worker) {
   if ($null -eq $Worker) { return '' }
   $state = "$($Worker.state)"
   if (-not $state) { return "$($Worker.status)" }
   if ($state -eq 'blocked' -and "$($Worker.status)" -ne 'waiting') { return 'done' }
+  if ($state -eq 'working' -and "$($Worker.status)" -eq 'idle' -and "$($Worker.name)" -match '^(.+) \[(plan|work)\]$') {
+    $file = if ($Matches[2] -eq 'plan') { Join-Path (Join-Path $Reports 'plans') "$($Matches[1]).md" } else { Join-Path $Reports "$($Matches[1]).md" }
+    if (Test-Path -LiteralPath $file -PathType Leaf) {
+      $written = [DateTimeOffset]::new((Get-Item -LiteralPath $file).LastWriteTimeUtc).ToUnixTimeMilliseconds()
+      if ($Worker.startedAt -and $written -ge [int64]$Worker.startedAt) { return 'done' }
+    }
+  }
   $state
 }
 
@@ -911,6 +933,11 @@ switch ($Verb) {
       Clear-Picks
       $prompt += " The checks of this project are picked by Dispatch after this run: run the Acceptance commands of the plan, but no check of the list checks.txt beyond them."
     }
+    # Confirm check results automatically (ticket confirm-a-check-step-s-result-on-the): the run does
+    # not stop at a check step whose result the user would confirm.
+    if (Option-On 'confirmResults') {
+      $prompt += " Confirm check results automatically is on: a check step whose result the user would confirm does not stop this run; take the result as it is, write it into the report under the heading Check result, and go on."
+    }
     if (Test-Path -LiteralPath $chosen) {
       $names = @(Get-Content -LiteralPath $chosen | Where-Object { $_.Trim() -ne '' } | ForEach-Object { ($_ -split "`t", 2)[0].Trim() -replace '"', "'" })
       # Checks at the gate (ticket simpler-process): with task branches and a gate command, the gate
@@ -1105,9 +1132,13 @@ switch ($Verb) {
   'stop' {
     Need-Id
     $worker = Find-Worker (Get-Workers) $Id
-    if ($null -eq $worker) { Refuse "no worker named $Id" }
-    & claude stop $worker.id
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    # A finished plan run whose session is no longer listed has nothing to stop: only the state is written.
+    if ($null -eq $worker) {
+      if ((Get-State) -ne 'planning') { Refuse "no worker named $Id" }
+    } else {
+      & claude stop $worker.id
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
     Set-State 'stopped'
   }
   'resume' {
