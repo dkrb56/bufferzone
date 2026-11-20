@@ -94,3 +94,16 @@ The screenshot shows the series page of "FROM" with Play, Mark series watched, t
 model: sonnet
 effort: medium
 The change is small and reuses the existing folder list, but it touches two languages and must pass the full build of all three apps.
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-20 21:28. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. How should the folder choice show up when you add a title to the watchlist?: The folder list opens by itself, and a folder button stays next to the bookmark
+2. Should the folder list also open by itself when you have no folders yet?: No, only when you have at least one folder
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-20 20:28 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests

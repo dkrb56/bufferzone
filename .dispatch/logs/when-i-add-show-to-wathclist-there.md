@@ -98,6 +98,19 @@ model: sonnet
 effort: medium
 The change is small and reuses the existing folder list, but it touches two languages and must pass the full build of all three apps.
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-20 21:28. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. How should the folder choice show up when you add a title to the watchlist?: The folder list opens by itself, and a folder button stays next to the bookmark
+2. Should the folder list also open by itself when you have no folders yet?: No, only when you have at least one folder
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-20 20:28 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests
+
 ## Stages
 
 ### STAGE: PLAN
@@ -378,28 +391,329 @@ Files: .dispatch/plans/when-i-add-show-to-wathclist-there.md
 Blockers: How should the folder choice show up when you add a title to the watchlist?; Should the folder list also open by itself when you have no folders yet?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-20T20:28:55.096Z
+COMMAND: sed -n 535,575p renderer/js/views.js; sed -n 320,330p renderer/js/views.js; sed -n 368,378p renderer/js/views.js; sed -n 105,125p webos/src/tvnav.js; grep -n "iconBtn *=\|function iconBtn" renderer/js/*.js | head
+EXIT: 0
+OUTPUT:
+        return true;
+      }
+    
+      function back() {
+        const a = app();
+        const modals = document.querySelectorAll('.modal-bg');
+        if (modals.length) {
+          const m = modals[modals.length - 1];
+          const cancel = Array.from(m.querySelectorAll('button')).find(b => /^(cancel|close|not now)$/i.test(b.textContent.trim()));
+          if (cancel) cancel.click(); else m.remove();
+          return;
+        }
+        if (!a) return;
+        if (a.palette && a.palette.isOpen) return a.palette.close();
+        if (on(document.getElementById('player'))) {
+          if (on(a.player.pop)) return a.player.closePop();
+          return a.player.exit();
+        }
+        if (a.multiview && a.multiview.isOpen) return a.multiview.close();
+    renderer/js/ui.js:71:  function iconBtn(name, { title, onclick, cls = '', size = 18, stroke } = {}) {
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-20T20:28:56.104Z
+COMMAND: cd /d/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone && sed -n 75,95p DetailScreens.kt; sed -n 170,190p DetailScreens.kt; sed -n 1,30p DetailScreens.kt | grep -n import | head -30; sed -n 160,200p WatchlistScreen.kt; grep -n "fun inWatchlist\|folders" AppState.kt | head -20
+EXIT: 0
+OUTPUT:
+                        }
+                    }
+                }
+                Focusable({ naming = true }, Modifier.fillMaxWidth()) { foc ->
+                    Row(Modifier.fillMaxWidth().background(if (foc) C.bg3 else Color.Transparent).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(26.dp)) { Icon(Icons.Rounded.Add, null, tint = C.accent, modifier = Modifier.size(18.dp)) }
+                        T("New folder…", 15.sp, FontWeight.Medium)
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.End) { TvButton("Done", onDismiss, kind = Kind.Primary) }
+            }
+        }
+    278:    fun inWatchlist(i: Item) = i.guid != null && i.guid in watchGuids
+    293:        store.folders = store.folders.map { Folder(it.id, it.name, it.guids - g) }
+    296:    // ---------- folders ----------
+    300:        if (key == "none") return store.folders.none { guid in it.guids }
+    301:        return store.folders.firstOrNull { it.id == key }?.guids?.contains(guid) == true
+    304:        val ids = store.folders.map { it.id }.toSet()
+    314:        store.folders = store.folders + f
+    318:        store.folders = store.folders.map { if (it.id != id) it else Folder(it.id, it.name, if (on) (it.guids + guid).distinct() else it.guids - guid) }
+
+### EVIDENCE: WORK 2026-11-20T20:29:06.143Z
+COMMAND: cd /d/dev_projects/buffer-zone && python - <<'EOF'
+    p='renderer/js/views.js'
+    s=open(p,encoding='utf-8').read()
+    helper='''  // Folder button for a detail page; shown while the title is on the watchlist.
+      P.wlFolderBtn = function (item) {
+        const inAny = () => this.wlFolders().some(f => f.guids.includes(item.guid));
+        const b = iconBtn('folder', { cls: 'boxed wl-folder' + (inAny() ? ' on' : ''), title: 'Folders', onclick: () => this.folderMenu(b, item.guid, () => b.classList.toggle('on', inAny())) });
+        return b;
+      };
+    
+      // Bookmark click on a detail page: toggle, redraw, then offer the folder list when the title was added and folders exist.
+      P.wlToggleAndOffer = async function (item) {
+        const was = this.inWatchlist(item);
+        await this.toggleWatchlist(item);
+        await this.render();
+        if (was || !this.inWatchlist(item) || !this.wlFolders().length) return;
+        const b = this.main && this.main.querySelector('.wl-folder');
+        if (b) b.click();
+      };
+    
+    '''
+    a='  // Folder menu for one title: a check per folder, plus "New folder".\n'
+    assert a in s
+    s=s.replace(a,helper+a,1)
+    o="onclick: async () => { await this.toggleWatchlist(m); this.render(); } }),"
+    assert s.count(o)==1
+    s=s.replace(o,"onclick: () => this.wlToggleAndOffer(m) }),\n        this.inWatchlist(m) ? this.wlFolderBtn(m) : null,")
+    o="onclick: async () => { await this.toggleWatchlist(show); this.render(); } }),"
+    assert s.count(o)==1
+    s=s.replace(o,"onclick: () => this.wlToggleAndOffer(show) }),\n            inWl ? this.wlFolderBtn(show) : null,")
+    open(p,'w',encoding='utf-8',newline='').write(s)
+    EOF
+    git diff --stat; grep -n "this.main\b" renderer/js/app.js | head -3; grep -n "wlFolders = " renderer/js/views.js
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of '.dispatch/briefs/when-i-add-show-to-wathclist-there.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/logs/when-i-add-show-to-wathclist-there.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/plans/when-i-add-show-to-wathclist-there.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/when-i-add-show-to-wathclist-there.models', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/when-i-add-show-to-wathclist-there.session', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/when-i-add-show-to-wathclist-there.state', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'renderer/js/views.js', LF will be replaced by CRLF the next time Git touches it
+     .../briefs/when-i-add-show-to-wathclist-there.md   |  4 ++++
+     .../logs/when-i-add-show-to-wathclist-there.md     | 15 +++++++++++++-
+     .../plans/when-i-add-show-to-wathclist-there.md    | 13 ++++++++++++
+     .../when-i-add-show-to-wathclist-there.models      |  1 +
+     .../when-i-add-show-to-wathclist-there.session     |  1 +
+     .dispatch/when-i-add-show-to-wathclist-there.state |  2 +-
+     renderer/js/views.js                               | 23 ++++++++++++++++++++--
+     7 files changed, 55 insertions(+), 4 deletions(-)
+    33:      this.main = document.getElementById('main');
+    104:      this.main.replaceChildren(...children);
+    424:      else if (this.current && !replace) this.history.push({ ...this.current, scroll: this.main.scrollTop });
+    458:  P.wlFolders = function () { return this.settings.watchlistFolders || []; };
+
+### EVIDENCE: WORK 2026-11-20T20:29:14.510Z
+COMMAND: cd /d/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone && grep -n "fun MovieScreen\|fun ShowScreen\|fun SeriesScreen\|^fun \|remember\b" DetailScreens.kt | head -30; grep -n "^import.*Outlined\|import.*runtime" DetailScreens.kt
+EXIT: 0
+OUTPUT:
+    41:import androidx.compose.runtime.remember
+    56:fun MovieScreen(key: String) {
+    57:    var m by remember(key) { mutableStateOf<Item?>(null) }
+    65:    var audio by remember(key) { mutableStateOf<Long?>(null) }        // null = automatic
+    66:    var sub by remember(key) { mutableStateOf<Long?>(-1) }            // -1 = automatic, 0 = off
+    67:    var quality by remember(key) { mutableStateOf(App.store.quality) }
+    68:    var dialog by remember { mutableStateOf<String?>(null) }
+    70:    val first = remember { FocusRequester() }
+    138:fun ShowScreen(s: Screen.Show) {
+    139:    var show by remember(s.key) { mutableStateOf<Item?>(null) }
+    140:    var seasons by remember(s.key) { mutableStateOf<List<Item>>(emptyList()) }
+    141:    var leaves by remember(s.key) { mutableStateOf<List<Item>>(emptyList()) }
+    142:    var season by remember(s.key) { mutableStateOf(s.season) }
+    157:    val first = remember { FocusRequester() }
+    37:import androidx.compose.runtime.Composable
+    38:import androidx.compose.runtime.LaunchedEffect
+    39:import androidx.compose.runtime.getValue
+    40:import androidx.compose.runtime.mutableStateOf
+    41:import androidx.compose.runtime.remember
+    42:import androidx.compose.runtime.setValue
+
+### EVIDENCE: WORK 2026-11-20T20:29:19.784Z
+COMMAND: python - <<'EOF'
+    p='DetailScreens.kt'
+    s=open(p,encoding='utf-8',newline='').read()
+    nl='\r\n' if '\r\n' in s else '\n'
+    def rep(o,n):
+        global s
+        assert s.count(o)==1,o
+        s=s.replace(o,n)
+    rep("import androidx.compose.material.icons.outlined.BookmarkBorder"+nl,"import androidx.compose.material.icons.outlined.BookmarkBorder"+nl+"import androidx.compose.material.icons.outlined.Folder"+nl)
+    rep("    var dialog by remember { mutableStateOf<String?>(null) }","    var dialog by remember { mutableStateOf<String?>(null) }"+nl+"    var folderDlg by remember { mutableStateOf(false) }")
+    rep("{ App.scope.launch { App.toggleWatchlist(item) } }, on = inWl)",
+    "{ App.scope.launch { val was = App.inWatchlist(item); App.toggleWatchlist(item); if (!was && App.inWatchlist(item) && App.store.folders.isNotEmpty()) folderDlg = true } }, on = inWl)"+nl+
+    "                if (inWl && item.guid != null) IconBtn(Icons.Outlined.Folder, { folderDlg = true }, on = App.store.folders.any { item.guid in it.guids })")
+    rep("{ App.scope.launch { App.toggleWatchlist(sh) } }, on = inWl)",
+    "{ App.scope.launch { val was = App.inWatchlist(sh); App.toggleWatchlist(sh); if (!was && App.inWatchlist(sh) && App.store.folders.isNotEmpty()) folderDlg = true } }, on = inWl)"+nl+
+    "                            if (inWl && sh.guid != null) IconBtn(Icons.Outlined.Folder, { folderDlg = true }, on = App.store.folders.any { sh.guid in it.guids })")
+    open(p,'w',encoding='utf-8',newline='').write(s)
+    EOF
+    grep -n "dialog" DetailScreens.kt | head; sed -n 138,165p DetailScreens.kt
+EXIT: 0
+OUTPUT:
+        Reload(s.key) {
+            show = runCatching { App.plex.metadata(s.key) }.getOrNull()
+            seasons = runCatching { App.plex.children(s.key) }.getOrDefault(emptyList())
+            leaves = runCatching { App.plex.allLeaves(s.key) }.getOrDefault(emptyList())
+        }
+        App.store.version
+        val sh = show ?: return Loading()
+        if (!App.itemAllowed(sh)) { T("This series is not available for this profile.", modifier = Modifier.padding(40.dp)); return }
+        val upNext = leaves.firstOrNull { it.viewOffset > 0 && it.viewCount == 0 } ?: leaves.firstOrNull { it.viewCount == 0 } ?: leaves.firstOrNull()
+        val allWatched = leaves.isNotEmpty() && leaves.all { it.viewCount > 0 }
+        val cur = season ?: upNext?.parentRatingKey ?: seasons.firstOrNull()?.ratingKey
+        val eps = leaves.filter { it.parentRatingKey == cur }
+        val seasonItem = seasons.firstOrNull { it.ratingKey == cur }
+        val watchedN = eps.count { it.viewCount > 0 }
+        val first = remember { FocusRequester() }
+        val listState = rememberLazyListState()
+    
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 40.dp)) {
+            item {
+                Box(Modifier.fillMaxWidth().height(380.dp)) {
+
+### EVIDENCE: WORK 2026-11-20T20:29:22.648Z
+COMMAND: sed -n 112,137p DetailScreens.kt; awk 'NR>=165' DetailScreens.kt | grep -n "^}" | head -3; grep -n "^private fun\|^fun \|^@Composable" DetailScreens.kt
+EXIT: 0
+OUTPUT:
+                Box(Modifier.fillMaxWidth().background(if (f) C.bgHover else C.bg3).padding(horizontal = 12.dp, vertical = 10.dp)) { T(value, 14.sp, maxLines = 1) }
+            }
+        }
+    }
+    
+    @Composable
+    private fun TechRow(k: String, v: String) = Row {
+        T(k, 13.sp, color = C.muted, modifier = Modifier.width(90.dp)); T(v, 13.sp)
+    37:}
+    68:}
+    56:@Composable
+    57:fun MovieScreen(key: String) {
+    125:@Composable
+    126:private fun PresetButton(label: String, value: String, modifier: Modifier, onClick: () -> Unit) {
+    135:@Composable
+    136:private fun TechRow(k: String, v: String) = Row {
+    140:@Composable
+    141:fun ShowScreen(s: Screen.Show) {
+    203:@Composable
+    204:private fun EpisodeRow(e: Item, focus: Boolean) {
+
+### EVIDENCE: WORK 2026-11-20T20:29:24.428Z
+COMMAND: sed -n 190,202p DetailScreens.kt; grep -n "^import.*Unit\|^import.*runtime" DetailScreens.kt | head -2
+EXIT: 0
+OUTPUT:
+                    LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(seasons, key = { it.ratingKey }) { se -> Chip(se.title, se.ratingKey == cur, { season = se.ratingKey }, check = false) }
+                    }
+                    T("${eps.size} episodes · $watchedN watched", 12.sp, color = C.muted, modifier = Modifier.padding(horizontal = 12.dp))
+                    if (seasonItem != null) TvButton(if (eps.isNotEmpty() && watchedN == eps.size) "Mark season unwatched" else "Mark season watched",
+                        { App.scope.launch { App.toggleWatched(seasonItem, eps.isNotEmpty() && watchedN == eps.size) } }, kind = Kind.Ghost)
+                }
+            }
+            items(eps, key = { it.ratingKey }) { e -> EpisodeRow(e, e.ratingKey == s.focus) }
+        }
+        LaunchedEffect(s.key, show != null, App.playback == null) { if (App.playback == null) runCatching { first.requestFocus() } }
+    }
+    
+    38:import androidx.compose.runtime.Composable
+    39:import androidx.compose.runtime.LaunchedEffect
+
+### EVIDENCE: WORK 2026-11-20T20:29:30.144Z
+COMMAND: python - <<'EOF'
+    p='DetailScreens.kt'
+    s=open(p,encoding='utf-8',newline='').read()
+    nl='\r\n' if '\r\n' in s else '\n'
+    def rep(o,n):
+        global s
+        assert s.count(o)==1,o
+        s=s.replace(o,n)
+    rep("    var season by remember(s.key) { mutableStateOf(s.season) }"+nl,"    var season by remember(s.key) { mutableStateOf(s.season) }"+nl+"    var folderDlg by remember { mutableStateOf(false) }"+nl)
+    rep("""        "quality" -> OptionDialog("Quality", QUALITY.map { it.id to it.label }, quality, { dialog = null }) { quality = it }
+        }
+    """.replace("\n",nl),"""        "quality" -> OptionDialog("Quality", QUALITY.map { it.id to it.label }, quality, { dialog = null }) { quality = it }
+        }
+        if (folderDlg) item.guid?.let { g -> FolderMenu(g) { folderDlg = false } }
+    """.replace("\n",nl))
+    rep("""if (App.playback == null) runCatching { first.requestFocus() } }
+    }
+    """.replace("\n",nl).replace("}\n","}\n") if False else "    LaunchedEffect(s.key, show != null, App.playback == null) { if (App.playback == null) runCatching { first.requestFocus() } }"+nl,
+    "    LaunchedEffect(s.key, show != null, App.playback == null) { if (App.playback == null) runCatching { first.requestFocus() } }"+nl+"    if (folderDlg) sh.guid?.let { g -> FolderMenu(g) { folderDlg = false } }"+nl)
+    open(p,'w',encoding='utf-8',newline='').write(s)
+    EOF
+    cd /d/dev_projects/buffer-zone && node --check renderer/js/views.js && node --check webos/src/tvnav.js && echo OK; grep -n "val item\|item =" android/app/src/main/java/com/dkrb56/bufferzone/DetailScreens.kt | head -4
+EXIT: 0
+OUTPUT:
+    OK
+    61:    val item = m ?: return Loading()
+
+### EVIDENCE: WORK 2026-11-20T20:29:32.761Z
+COMMAND: node scripts/build-all.js > $CLAUDE_JOB_DIR/tmp/build.log 2>&1; echo exit $?; tail -25 $CLAUDE_JOB_DIR/tmp/build.log
+EXIT: 0
+OUTPUT:
+    > Task :app:packageDebug
+    > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+    > Task :app:assembleDebug
+    
+    BUILD SUCCESSFUL in 1m 28s
+    37 actionable tasks: 5 executed, 32 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+    
+    == LG webOS
+    
+    Create com.dkrb56.bufferzone_0.2.10_all.ipk to D:\dev_projects\buffer-zone\dist
+    [Warning] The Node.js version available on the target device may be lower than your development environment. Check the supported version before using recent Node.js features:
+    https://webostv.developer.lge.com/develop/guides/js-service-basics#supported-nodejs-version
+    Success
+    BufferZone-0.2.10-setup.exe  122.0 MB
+    BufferZone-0.2.10-setup.exe.blockmap  0.1 MB
+    latest.yml  0.0 MB
+    BufferZone-0.2.10-portable.exe  108.0 MB
+    BufferZone-tv-0.2.10.apk  20.6 MB
+    com.dkrb56.bufferzone_0.2.10_all.ipk  0.3 MB
+
+### EVIDENCE: WORK 2026-11-20T20:33:14.989Z
+COMMAND: git status --short | grep -v "^.. .dispatch" ; F="renderer/js/views.js webos/src/tvnav.js android/app/src/main/java/com/dkrb56/bufferzone/DetailScreens.kt android/app/src/main/java/com/dkrb56/bufferzone/WatchlistScreen.kt"; git add $F && git commit -q -m "when-i-add-show-to-wathclist-there: folder choice when adding a title to the watchlist" $F && git log --oneline -1
+EXIT: 0
+OUTPUT:
+     M android/app/src/main/java/com/dkrb56/bufferzone/DetailScreens.kt
+     M android/app/src/main/java/com/dkrb56/bufferzone/WatchlistScreen.kt
+     M renderer/js/views.js
+     M webos/src/tvnav.js
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/DetailScreens.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/WatchlistScreen.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'renderer/js/views.js', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'webos/src/tvnav.js', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/DetailScreens.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/WatchlistScreen.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'renderer/js/views.js', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'webos/src/tvnav.js', LF will be replaced by CRLF the next time Git touches it
+    afc276c when-i-add-show-to-wathclist-there: folder choice when adding a title to the watchlist
+
+### 2. WORK — ok
+Series and movie pages show a folder button next to the bookmark while the title is on the watchlist.
+Files: renderer/js/views.js, webos/src/tvnav.js, android/app/src/main/java/com/dkrb56/bufferzone/DetailScreens.kt, android/app/src/main/java/com/dkrb56/bufferzone/WatchlistScreen.kt
 Blockers: none
 
 ## What changed
-none
+- Series and movie pages show a folder button next to the bookmark while the title is on the watchlist.
+- After you add a title, the folder list opens by itself when at least one folder exists (Decisions 1 and 2).
+- On the LG TV, Back closes an open folder list and stays on the page.
+- On Android TV, the same flow uses the existing folder dialog.
 
 ## Why
-none
+The user wanted to put a title in a folder when adding it to the watchlist.
 
 ## Files
-none
+- `renderer/js/views.js`: new `wlFolderBtn` and `wlToggleAndOffer`; used on the movie and show pages.
+- `webos/src/tvnav.js`: `back()` removes `.menu-pop`.
+- `WatchlistScreen.kt`: `FolderMenu` is no longer private.
+- `DetailScreens.kt`: folder button, dialog flag and dialog on both screens; import `Outlined.Folder`.
 
 ## Verification
-none
+- `node --check renderer/js/views.js`: exit 0, no output.
+- `node --check webos/src/tvnav.js`: exit 0, no output.
+- `node scripts/build-all.js`: exit 0. Gradle `assembleDebug` reported BUILD SUCCESSFUL. All six files of 0.2.10 were listed.
+- Commit afc276c holds only the four files.
+- Check "android/gradle tests" was not chosen. It was not run.
 
 ## Follow-ups
-none
+- Removing a title from the watchlist on a detail page keeps its folder membership. Re-adding shows the old folder checks.
+- Version bump and release are not done.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
-| claude-opus-5-5 | 34 | 147992 | 1795551 | 13741 | 1957318 |
+| claude-opus-5-5 | 36 | 154858 | 1937120 | 14297 | 2106311 |
+| claude-sonnet-5-5 | 24 | 44317 | 790494 | 6204 | 841039 |
