@@ -116,6 +116,8 @@
       if (cancel) cancel.click(); else m.remove();
       return;
     }
+    const pop = document.querySelector('.menu-pop');
+    if (pop) { pop.remove(); return; }
     if (!a) return;
     if (a.palette && a.palette.isOpen) return a.palette.close();
     if (on(document.getElementById('player'))) {

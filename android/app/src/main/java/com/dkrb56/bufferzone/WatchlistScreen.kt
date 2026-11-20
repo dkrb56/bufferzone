@@ -165,7 +165,7 @@ private fun WatchRow(r: WlRow, onFolders: () -> Unit) {
 
 /** Folder menu for one title: a check per folder, plus "New folder". */
 @Composable
-private fun FolderMenu(guid: String, onDismiss: () -> Unit) {
+fun FolderMenu(guid: String, onDismiss: () -> Unit) {
     var naming by remember { mutableStateOf(false) }
     if (naming) {
         TextDialog("New folder", okLabel = "Create", onDismiss = { naming = false }) { name ->

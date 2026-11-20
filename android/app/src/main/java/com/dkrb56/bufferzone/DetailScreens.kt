@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.rounded.Check
@@ -66,6 +67,7 @@ fun MovieScreen(key: String) {
     var sub by remember(key) { mutableStateOf<Long?>(-1) }            // -1 = automatic, 0 = off
     var quality by remember(key) { mutableStateOf(App.store.quality) }
     var dialog by remember { mutableStateOf<String?>(null) }
+    var folderDlg by remember { mutableStateOf(false) }
     fun play(resume: Boolean) = App.play(item, resume, audioId = audio, subId = if (sub == -1L) null else sub, subPreset = sub != -1L, quality = quality)
     val first = remember { FocusRequester() }
 
@@ -80,7 +82,8 @@ fun MovieScreen(key: String) {
             } else TvButton("Play", { play(false) }, Modifier.fillMaxWidth(), Icons.Rounded.PlayArrow, Kind.Primary, true, first)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 val inWl = App.inWatchlist(item)
-                IconBtn(if (inWl) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder, { App.scope.launch { App.toggleWatchlist(item) } }, on = inWl)
+                IconBtn(if (inWl) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder, { App.scope.launch { val was = App.inWatchlist(item); App.toggleWatchlist(item); if (!was && App.inWatchlist(item) && App.store.folders.isNotEmpty()) folderDlg = true } }, on = inWl)
+                if (inWl && item.guid != null) IconBtn(Icons.Outlined.Folder, { folderDlg = true }, on = App.store.folders.any { item.guid in it.guids })
                 IconBtn(Icons.Rounded.Check, { App.scope.launch { App.toggleWatched(item) } }, on = item.isWatched)
                 IconBtn(Icons.Outlined.PushPin, { App.togglePin(item) }, on = App.isPinned(item.ratingKey))
                 if (App.multiviewAllowed) IconBtn(Icons.Outlined.GridView, { MultiView.add(item); App.go(Screen.MultiView) })
@@ -117,6 +120,7 @@ fun MovieScreen(key: String) {
         "subs" -> OptionDialog("Subtitles", listOf(-1L to "Automatic", 0L to "Off") + subs.map { it.id to it.displayTitle }, sub, { dialog = null }) { sub = it }
         "quality" -> OptionDialog("Quality", QUALITY.map { it.id to it.label }, quality, { dialog = null }) { quality = it }
     }
+    if (folderDlg) item.guid?.let { g -> FolderMenu(g) { folderDlg = false } }
 }
 
 @Composable
@@ -140,6 +144,7 @@ fun ShowScreen(s: Screen.Show) {
     var seasons by remember(s.key) { mutableStateOf<List<Item>>(emptyList()) }
     var leaves by remember(s.key) { mutableStateOf<List<Item>>(emptyList()) }
     var season by remember(s.key) { mutableStateOf(s.season) }
+    var folderDlg by remember { mutableStateOf(false) }
     Reload(s.key) {
         show = runCatching { App.plex.metadata(s.key) }.getOrNull()
         seasons = runCatching { App.plex.children(s.key) }.getOrDefault(emptyList())
@@ -174,7 +179,8 @@ fun ShowScreen(s: Screen.Show) {
                             if (upNext != null) TvButton("${if (upNext.viewOffset > 0 && upNext.viewCount == 0) "Resume" else "Play"} ${upNext.code}", { App.play(upNext) }, icon = Icons.Rounded.PlayArrow, kind = Kind.Primary, large = true, focusRequester = first)
                             TvButton(if (allWatched) "Mark series unwatched" else "Mark series watched", { App.scope.launch { App.toggleWatched(sh, allWatched) } }, icon = Icons.Rounded.Check, large = true)
                             val inWl = App.inWatchlist(sh)
-                            IconBtn(if (inWl) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder, { App.scope.launch { App.toggleWatchlist(sh) } }, on = inWl)
+                            IconBtn(if (inWl) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder, { App.scope.launch { val was = App.inWatchlist(sh); App.toggleWatchlist(sh); if (!was && App.inWatchlist(sh) && App.store.folders.isNotEmpty()) folderDlg = true } }, on = inWl)
+                            if (inWl && sh.guid != null) IconBtn(Icons.Outlined.Folder, { folderDlg = true }, on = App.store.folders.any { sh.guid in it.guids })
                             IconBtn(Icons.Outlined.PushPin, { App.togglePin(sh) }, on = App.isPinned(sh.ratingKey))
                         }
                     }
@@ -194,6 +200,7 @@ fun ShowScreen(s: Screen.Show) {
         items(eps, key = { it.ratingKey }) { e -> EpisodeRow(e, e.ratingKey == s.focus) }
     }
     LaunchedEffect(s.key, show != null, App.playback == null) { if (App.playback == null) runCatching { first.requestFocus() } }
+    if (folderDlg) sh.guid?.let { g -> FolderMenu(g) { folderDlg = false } }
 }
 
 @Composable

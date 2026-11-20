@@ -323,7 +323,8 @@
         : btn('Play', { kind: 'primary', size: 'lg', full: true, icon: 'play', onclick: () => this.play(m, opts()) }),
       m.viewOffset ? btn('Play from start', { size: 'lg', full: true, icon: 'rotate-ccw', onclick: () => this.play(m, { ...opts(), resume: false }) }) : null,
       h('div.btn-row',
-        iconBtn(this.inWatchlist(m) ? 'bookmark-check' : 'bookmark', { cls: 'boxed' + (this.inWatchlist(m) ? ' on' : ''), title: this.inWatchlist(m) ? 'Remove from watchlist' : 'Add to watchlist', onclick: async () => { await this.toggleWatchlist(m); this.render(); } }),
+        iconBtn(this.inWatchlist(m) ? 'bookmark-check' : 'bookmark', { cls: 'boxed' + (this.inWatchlist(m) ? ' on' : ''), title: this.inWatchlist(m) ? 'Remove from watchlist' : 'Add to watchlist', onclick: () => this.wlToggleAndOffer(m) }),
+        this.inWatchlist(m) ? this.wlFolderBtn(m) : null,
         iconBtn('check', { cls: 'boxed' + (watched ? ' on' : ''), title: watched ? 'Mark unwatched' : 'Mark watched', onclick: () => this.toggleWatched(m) }),
         iconBtn('pin', { cls: 'boxed' + (this.isPinned(m) ? ' on' : ''), title: this.isPinned(m) ? 'Unpin' : 'Pin to sidebar', onclick: () => { this.togglePin(m); this.render(); } }),
         this.multiviewAllowed ? iconBtn('layout-grid', { cls: 'boxed', title: 'Add to Multi-view', onclick: () => this.multiview.add(m) }) : null));
@@ -370,7 +371,8 @@
           h('div.btn-row',
             upNext ? btn(`${upNext.viewOffset && !upNext.viewCount ? 'Resume' : 'Play'} ${epCode(upNext)}`, { kind: 'primary', size: 'lg', icon: 'play', onclick: () => this.play(upNext) }) : null,
             btn(allWatched ? 'Mark series unwatched' : 'Mark series watched', { size: 'lg', icon: 'check', onclick: () => this.toggleWatched(show, allWatched) }),
-            iconBtn(inWl ? 'bookmark-check' : 'bookmark', { cls: 'boxed' + (inWl ? ' on' : ''), title: inWl ? 'Remove from watchlist' : 'Add to watchlist', onclick: async () => { await this.toggleWatchlist(show); this.render(); } }),
+            iconBtn(inWl ? 'bookmark-check' : 'bookmark', { cls: 'boxed' + (inWl ? ' on' : ''), title: inWl ? 'Remove from watchlist' : 'Add to watchlist', onclick: () => this.wlToggleAndOffer(show) }),
+            inWl ? this.wlFolderBtn(show) : null,
             iconBtn('pin', { cls: 'boxed' + (this.isPinned(show) ? ' on' : ''), title: this.isPinned(show) ? 'Unpin' : 'Pin to sidebar', onclick: () => { this.togglePin(show); this.render(); } }))))));
 
     const tabs = h('div.tabs');
@@ -535,6 +537,23 @@
       chip('all', 'All'),
       folders.map(f => chip(f.id, f.name)),
       folders.length ? chip('none', 'No folder') : null);
+  };
+
+  // Folder button for a detail page; shown while the title is on the watchlist.
+  P.wlFolderBtn = function (item) {
+    const inAny = () => this.wlFolders().some(f => f.guids.includes(item.guid));
+    const b = iconBtn('folder', { cls: 'boxed wl-folder' + (inAny() ? ' on' : ''), title: 'Folders', onclick: () => this.folderMenu(b, item.guid, () => b.classList.toggle('on', inAny())) });
+    return b;
+  };
+
+  // Bookmark click on a detail page: toggle, redraw, then offer the folder list when the title was added and folders exist.
+  P.wlToggleAndOffer = async function (item) {
+    const was = this.inWatchlist(item);
+    await this.toggleWatchlist(item);
+    await this.render();
+    if (was || !this.inWatchlist(item) || !this.wlFolders().length) return;
+    const b = this.main && this.main.querySelector('.wl-folder');
+    if (b) b.click();
   };
 
   // Folder menu for one title: a check per folder, plus "New folder".
