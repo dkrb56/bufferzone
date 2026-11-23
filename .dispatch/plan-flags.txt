@@ -10,3 +10,5 @@ Read,Grep,Glob,Bash,WebFetch,Write
 WebFetch,Edit(.dispatch/plans/**)
 --disallowedTools
 Edit(.dispatch/briefs/**),Bash(powershell -ExecutionPolicy Bypass -File .dispatch/worker.ps1 *)
+--settings
+.dispatch/worker-settings.json

@@ -5,6 +5,8 @@ xhigh
 --permission-mode
 auto
 --tools
-default
+Read,Edit,Write,Glob,Grep,Bash,ToolSearch,Agent
 --disallowedTools
 AskUserQuestion,SendMessage
+--settings
+.dispatch/worker-settings.json

@@ -23,8 +23,23 @@ and, after the user's choice, <ticket-id>.checks; the merge runs these checks be
 Checks at the gate gives them to the gate command.
 <ticket-id>.models, when it exists, gives the model and the effort of a run of the task: a line
 `plan <model> <effort>` or `work <model> <effort>` replaces those of the options file.
+work-tools.txt, when it exists, adds one tool name per line to the --tools list of the work run.
 The script finds the project from its own folder, and the options files name paths relative to the
 project, so a clone on another path or computer needs no change.
+With Work folder on (workFolders and taskBranches in options.json), approve, reply, resume of a work run and check <ticket-id> work in the work folder work\1, a git worktree on the task branch;
+work-setup.txt runs once in a new one, work\1.record names the task that uses it, and a second task is refused until the folder is free.
+merge <ticket-id> then builds the merge commit and runs the checks and the gate in the work folder (it waits up to 60 s for it),
+and moves the base in one step: git merge --ff-only in the project folder, or git update-ref when it is on another branch.
+A work run whose session started in the project folder before the switch goes on as a new session in the work folder.
+With workFolderCount 2 to 4 in options.json, the work folders are work\1 to work\<n>, each with its own record work\<n>.record
+and its own set-up log work\<n>-setup.log, and up to <n> tasks are in their work run at the same time. Approve and merge take
+the free folder that has the task branch checked out, else the one whose record names the task, else the lowest free one;
+a reply, a resume and check <ticket-id> go into the folder where the session of the work run runs, also above the number.
+A work run is refused while a task in another folder has a plan that names a file of its plan. The refusals:
+"all <n> work folders of this project are in use (tasks a, b); the run starts when one is free" (the merge: "...; the merge
+starts when one is free"), "the work folder <k> of this project, where the session of this task runs, is in use (task x);
+the run starts when it is free", and "the task x works on the same files (a, b); this work run starts when it has ended".
+With one folder the texts name "the work folder of this project", as before. A folder above the number stays on the disk.
 #>
 param(
   [Parameter(Mandatory = $true, Position = 0)]
@@ -81,8 +96,23 @@ function Read-Flags([string]$Name) {
 # The options of a run with the model and the effort of the task: the line of the run in
 # <ticket-id>.models (`plan <model> <effort>` or `work <model> <effort>`, `-` for no value) replaces
 # the value after --model and after --effort, or goes in front when the options file lacks it.
+# For the work run, each tool name of work-tools.txt (one per line; # starts a note) that the list
+# after --tools lacks goes at its end.
 function Run-Flags([string]$Run) {
   $lines = @(Read-Flags "$Run-flags.txt")
+  $tools = Join-Path $Reports 'work-tools.txt'
+  if ($Run -eq 'work' -and (Test-Path -LiteralPath $tools)) {
+    $at = [Array]::IndexOf([string[]]($lines | ForEach-Object { $_.Trim() }), '--tools')
+    if ($at -ge 0 -and $at + 1 -lt $lines.Count) {
+      $list = @($lines[$at + 1].Trim() -split ',' | Where-Object { $_ -ne '' })
+      foreach ($name in @(Get-Content -LiteralPath $tools)) {
+        $name = $name.Trim()
+        if ($name -notmatch '^[A-Za-z][A-Za-z0-9_-]*$' -or $list -contains $name) { continue }
+        $list += $name
+      }
+      $lines[$at + 1] = $list -join ','
+    }
+  }
   $file = Join-Path $Reports "$Id.models"
   if (-not $Id -or -not (Test-Path -LiteralPath $file)) { return $lines }
   $line = @(Get-Content -LiteralPath $file | Where-Object { ($_.Trim() -split '\s+')[0] -eq $Run }) | Select-Object -First 1
@@ -157,7 +187,7 @@ function Find-Worker($Workers, [string]$Ticket, [string]$Run) {
 # Without a worker of the ticket in the list (an ended or cleaned plan session) approve goes on.
 function Approve-Check {
   if ((Get-State) -eq 'stopped') { Refuse "the task $Id was stopped; start a new task" }
-  $worker = Find-Worker (Get-Workers) $Id
+  $worker = Find-Worker (Listed-Workers) $Id
   if ($null -eq $worker) { return }
   $state = Worker-State $worker
   if ($state -eq 'working' -or $state -eq 'blocked') {
@@ -170,7 +200,7 @@ function Approve-Check {
 # $Run picks the session of that run.
 function Resume-Target([string]$Run) {
   if ((Get-State) -eq 'stopped') { Refuse "the task $Id was stopped; start a new task" }
-  $worker = Find-Worker (Get-Workers) $Id $Run
+  $worker = Find-Worker (Listed-Workers) $Id $Run
   if ($null -eq $worker) { Refuse "no worker named $Id on this computer. A run that started on another computer cannot be resumed here: start the task again, or answer on the computer where it ran" }
   $state = Worker-State $worker
   if ($state -eq 'working' -or $state -eq 'blocked') {
@@ -186,12 +216,17 @@ function Resume-Target([string]$Run) {
 # with the exit code of claude; a claude that is not found counts as exit code 1. A failure also
 # checks out $BranchOnFailure again when one is given: the branch before the task branch. Gives the
 # lines that claude printed (claude --bg prints the job id) and writes them on to the caller.
-function Run-Claude([string[]]$Arguments, [string]$StateOnFailure, [string]$BranchOnFailure) {
-  Push-Location -LiteralPath $Project
+# $RunIn, when given, is the folder of the run in place of the project folder (the work folder); the
+# variable DISPATCH_WORK_FOLDER then holds its number while claude starts (ticket
+# up-to-4-work-folders-more-than-one-task).
+function Run-Claude([string[]]$Arguments, [string]$StateOnFailure, [string]$BranchOnFailure, [string]$RunIn) {
+  Push-Location -LiteralPath $(if ($RunIn) { $RunIn } else { $Project })
+  if ($RunIn) { $env:DISPATCH_WORK_FOLDER = "$script:FolderNo" }
   $global:LASTEXITCODE = 0
   $printed = @(& claude @Arguments)
   $ok = $?
   $code = $LASTEXITCODE
+  if ($RunIn) { Remove-Item Env:DISPATCH_WORK_FOLDER -ErrorAction SilentlyContinue }
   Pop-Location
   foreach ($line in $printed) { [Console]::Out.WriteLine("$line") }
   if ($ok -and $code -eq 0) { return ,$printed }
@@ -211,9 +246,16 @@ function Session-Path { Join-Path $Reports "$Id.session" }
 function Save-Session([string]$Run, [string[]]$Printed) {
   $words = @($Printed | ForEach-Object { "$_" -split '\s+' } | Where-Object { $_ })
   $workers = @()
+  # The list after the start replaces the one before it (ticket the-worker-script-asks-git-each-fact):
+  # Work-Job reads it; a failed list leaves none, and Work-Job lists again.
+  $script:ListedOk = $false
   try {
     $text = (& claude agents --json --all) -join "`n"
-    if ($LASTEXITCODE -eq 0) { $workers = @($text | ConvertFrom-Json | ForEach-Object { $_ }) }
+    if ($LASTEXITCODE -eq 0) {
+      $workers = @($text | ConvertFrom-Json | ForEach-Object { $_ })
+      $script:Listed = $workers
+      $script:ListedOk = $true
+    }
   } catch { }
   $worker = @($workers | Where-Object { $_.id -and $words -contains "$($_.id)" }) | Select-Object -First 1
   if ($null -eq $worker) {
@@ -275,12 +317,28 @@ function Measure-Limit { Command-Limit 'measure-commands.txt' 600 }
 function Lock-Path { Join-Path $Reports 'measure\lock' }
 function Merge-Lock { Join-Path $Reports 'merge\lock' }
 
+# The process $ProcessId runs and is the one that wrote a file at the time $Since. Windows gives the
+# id of an ended process to a new process, so a process that started after $Since (1 s for a time
+# without fractions) is another one. A time that does not parse leaves the id alone to decide; a
+# start time that cannot be read (a process of another user) is another process.
+function Owner-Runs([string]$ProcessId, [string]$Since) {
+  $other = 0
+  if (-not [int]::TryParse($ProcessId, [ref]$other)) { return $false }
+  $process = Get-Process -Id $other -ErrorAction SilentlyContinue
+  if ($null -eq $process) { return $false }
+  $time = [DateTimeOffset]::MinValue
+  if (-not [DateTimeOffset]::TryParse("$Since", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeLocal, [ref]$time)) { return $true }
+  $started = $null
+  try { $started = $process.StartTime } catch { }
+  if ($null -eq $started) { return $false }
+  $started.ToUniversalTime() -le $time.UtcDateTime.AddSeconds(1)
+}
+
 # The ticket of a lock whose process still runs, else $null.
 function Lock-Holder([string]$Lock) {
   if (-not (Test-Path -LiteralPath $Lock)) { return $null }
   $holder = "$(Get-Content -LiteralPath $Lock -Raw -ErrorAction SilentlyContinue)".Trim() -split "`t"
-  $other = 0
-  if ([int]::TryParse($holder[0], [ref]$other) -and $null -ne (Get-Process -Id $other -ErrorAction SilentlyContinue)) {
+  if (Owner-Runs $holder[0] $(if ($holder.Count -gt 2) { $holder[2] } else { '' })) {
     if ($holder.Count -gt 1) { return $holder[1] }
     return 'another task'
   }
@@ -315,10 +373,219 @@ function Exit-Lock([string]$Lock) {
 
 # Runs git in the project folder. Gives the exit code and the lines of stdout and stderr. Windows
 # PowerShell turns the stderr lines of a native command into errors, so the preference is local.
-function Invoke-Git([string[]]$A) {
+# Invoke-GitAt runs it in the folder $Dir (the work folder). A command in the project folder that can
+# write to its index or its files ends the look at the uncommitted changes (Dirty-Lines).
+function Invoke-GitAt([string]$Dir, [string[]]$A) {
   $ErrorActionPreference = 'Continue'
-  $lines = @(& git -C $Project @A 2>&1 | ForEach-Object { "$_" })
-  [pscustomobject]@{ Code = $LASTEXITCODE; Lines = $lines; Text = ($lines -join "`n").Trim() }
+  $lines = @(& git -C $Dir @A 2>&1 | ForEach-Object { "$_" })
+  $code = $LASTEXITCODE
+  if ($Dir -eq $Project -and (Git-Writes $A)) { $script:Dirty = $null }
+  [pscustomobject]@{ Code = $code; Lines = $lines; Text = ($lines -join "`n").Trim() }
+}
+function Invoke-Git([string[]]$A) { Invoke-GitAt $Project $A }
+
+# Whether the git command $A can write to the index or the files of its folder (ticket
+# the-worker-script-asks-git-about-20): its subcommand (the first word that is no option, after the
+# value of -c or -C) is none of the reads and none of the commands that write objects or refs only;
+# read-tree and rm write a separate index while GIT_INDEX_FILE names one.
+$script:GitReads = @('status', 'diff', 'rev-parse', 'ls-files', 'ls-tree', 'cat-file', 'merge-base', 'merge-tree', 'config', 'log', 'show', 'for-each-ref', 'symbolic-ref', 'check-ignore', 'write-tree', 'commit-tree')
+function Git-Writes([string[]]$A) {
+  $sub = ''
+  for ($i = 0; $i -lt $A.Count; $i++) {
+    if ($A[$i] -eq '-c' -or $A[$i] -eq '-C') { $i++; continue }
+    if ($A[$i].StartsWith('-')) { continue }
+    $sub = $A[$i]
+    break
+  }
+  if ($script:GitReads -contains $sub) { return $false }
+  # update-ref moves a ref and no file (ticket the-worker-script-asks-git-each-fact): only HEAD, the
+  # branch of the project folder, or a form it cannot tell (no full ref name) changes what status says.
+  if ($sub -eq 'update-ref') {
+    $ref = ''
+    for ($j = $i + 1; $j -lt $A.Count; $j++) {
+      if ($A[$j].StartsWith('-')) { continue }
+      $ref = $A[$j]
+      break
+    }
+    if (-not $ref.StartsWith('refs/')) { return $true }
+    $on = Head-Branch $Project
+    return (-not $on -or $ref -eq "refs/heads/$on")
+  }
+  if (($sub -eq 'read-tree' -or $sub -eq 'rm') -and $env:GIT_INDEX_FILE) { return $false }
+  $true
+}
+
+# The facts that the files of git hold (ticket the-worker-script-asks-git-about-20): the branch, the
+# hash of a ref, an open merge and the worktrees come from the files, as src-tauri/src/core/gitfiles.rs
+# reads them for Dispatch, so a run starts git only for the index, the trees and the writes. A
+# repository that keeps its refs in the reftable format (a folder reftable in the common folder, and
+# HEAD names refs/heads/.invalid) asks git as before, and so does a reader whose file read fails.
+$script:GitDirs = @{}
+$script:RefsReadable = @{}
+# The first line of a file, trimmed; '' when the file is missing.
+function First-Line([string]$File) {
+  if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { return '' }
+  "$(([IO.File]::ReadAllText($File) -split "`r?`n")[0])".Trim()
+}
+# The git folder of the checkout $Dir: $Dir\.git when it is a folder, else the path after `gitdir:` in
+# that file (relative to $Dir, forward slashes); '' when neither exists. A found folder is kept.
+function Git-Dir([string]$Dir) {
+  if (-not $Dir) { return '' }
+  if ($script:GitDirs.ContainsKey($Dir)) { return $script:GitDirs[$Dir] }
+  $dotGit = Join-Path $Dir '.git'
+  $found = ''
+  if (Test-Path -LiteralPath $dotGit -PathType Container) { $found = $dotGit }
+  elseif (Test-Path -LiteralPath $dotGit -PathType Leaf) {
+    $first = First-Line $dotGit
+    if ($first.StartsWith('gitdir:')) {
+      $target = $first.Substring(7).Trim()
+      if ($target) { $found = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($target)) { $target } else { Join-Path $Dir $target })) }
+    }
+  }
+  if ($found -and -not (Test-Path -LiteralPath (Join-Path $found 'HEAD') -PathType Leaf)) { $found = '' }
+  if ($found) { $script:GitDirs[$Dir] = $found }
+  $found
+}
+# The common folder of the checkout $Dir: the path in the file commondir of its git folder (relative to
+# the git folder), else the git folder; '' without one.
+function Git-Common([string]$Dir) {
+  $gitDir = Git-Dir $Dir
+  if (-not $gitDir) { return '' }
+  $target = First-Line (Join-Path $gitDir 'commondir')
+  if (-not $target) { return $gitDir }
+  [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($target)) { $target } else { Join-Path $gitDir $target }))
+}
+# Whether the files of the repository of $Dir hold its refs: false without a git folder, with the
+# reftable format, or when HEAD names refs/heads/.invalid.
+function Refs-Readable([string]$Dir) {
+  if ($script:RefsReadable.ContainsKey($Dir)) { return $script:RefsReadable[$Dir] }
+  $gitDir = Git-Dir $Dir
+  $readable = $false
+  if ($gitDir) {
+    $readable = -not (Test-Path -LiteralPath (Join-Path (Git-Common $Dir) 'reftable') -PathType Container)
+    if ($readable -and (First-Line (Join-Path $gitDir 'HEAD')) -eq 'ref: refs/heads/.invalid') { $readable = $false }
+  }
+  $script:RefsReadable[$Dir] = $readable
+  $readable
+}
+# The branch of the checkout $Dir, as `git symbolic-ref --short -q HEAD` gives it: the target of the
+# `ref: ` line of its HEAD after refs/heads/ (after refs/ for another kind of ref); '' when HEAD is
+# detached or the folder is no repository.
+function Head-Branch([string]$Dir) {
+  if (Refs-Readable $Dir) {
+    try {
+      $line = First-Line (Join-Path (Git-Dir $Dir) 'HEAD')
+      if (-not $line.StartsWith('ref:')) { return '' }
+      $target = $line.Substring(4).Trim()
+      if ($target.StartsWith('refs/heads/')) { return $target.Substring(11) }
+      if ($target.StartsWith('refs/')) { return $target.Substring(5) }
+      return ''
+    } catch { }
+  }
+  $result = Invoke-GitAt $Dir @('symbolic-ref', '--short', '-q', 'HEAD')
+  if ($result.Code -ne 0) { return '' }
+  $result.Text
+}
+# The hash of the ref $Name (a full name, refs/heads/<branch>, or HEAD) of the checkout $Dir, as
+# `git rev-parse --verify --quiet <name>` gives it: the loose file (HEAD and the refs of the worktree in
+# the git folder, the others in the common folder), a `ref: ` line followed at most 5 times, else the
+# line `<hash> <name>` of packed-refs; '' when the ref does not exist. A hash has 40 or 64 hex digits.
+function Ref-Hash([string]$Dir, [string]$Name) {
+  if (Refs-Readable $Dir) {
+    try {
+      $gitDir = Git-Dir $Dir
+      $common = Git-Common $Dir
+      $target = $Name
+      for ($step = 0; $step -lt 6; $step++) {
+        if (-not $target -or $target.Contains('..')) { return '' }
+        $own = $target -eq 'HEAD' -or $target.StartsWith('refs/bisect/') -or $target.StartsWith('refs/worktree/') -or $target.StartsWith('refs/rewritten/')
+        $file = Join-Path $(if ($own) { $gitDir } else { $common }) ($target -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return Packed-Ref $common $target }
+        $line = First-Line $file
+        if ($line.StartsWith('ref:')) { $target = $line.Substring(4).Trim(); continue }
+        if ($line -match '^([0-9a-f]{40}|[0-9a-f]{64})$') { return $line }
+        return ''
+      }
+      return ''
+    } catch { }
+  }
+  $result = Invoke-GitAt $Dir @('rev-parse', '--verify', '--quiet', $Name)
+  if ($result.Code -ne 0) { return '' }
+  "$($result.Lines | Select-Object -Last 1)".Trim()
+}
+# The hash of the ref $Name in the file packed-refs of the common folder $Common: the line
+# `<hash> <name>`; the header lines (#) and the peeled lines (^) do not count. '' when none.
+function Packed-Ref([string]$Common, [string]$Name) {
+  $file = Join-Path $Common 'packed-refs'
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return '' }
+  foreach ($line in [IO.File]::ReadAllLines($file)) {
+    if ($line.StartsWith('#') -or $line.StartsWith('^')) { continue }
+    $at = $line.IndexOf(' ')
+    if ($at -lt 0 -or $line.Substring($at + 1).TrimEnd() -ne $Name) { continue }
+    $hash = $line.Substring(0, $at)
+    if ($hash -match '^([0-9a-f]{40}|[0-9a-f]{64})$') { return $hash }
+    return ''
+  }
+  ''
+}
+# The hash of HEAD of the checkout $Dir; '' for an unborn branch.
+function Head-Hash([string]$Dir) { Ref-Hash $Dir 'HEAD' }
+# Whether the checkout $Dir has an open merge, as `git rev-parse -q --verify MERGE_HEAD` tells it: the
+# file MERGE_HEAD of its git folder exists.
+function Merge-Open([string]$Dir) {
+  $gitDir = Git-Dir $Dir
+  if ($gitDir -and (Refs-Readable $Dir)) { return (Test-Path -LiteralPath (Join-Path $gitDir 'MERGE_HEAD') -PathType Leaf) }
+  (Invoke-GitAt $Dir @('rev-parse', '-q', '--verify', 'MERGE_HEAD')).Code -eq 0
+}
+# The linked worktrees of the repository of $Dir, as `git worktree list --porcelain` lists them: one
+# object per entry of <common>\worktrees\<n> with Folder (the parent of the path in its file gitdir),
+# Branch (the target of its HEAD after refs/heads/, '' when detached) and Stale (the .git file that
+# gitdir names is gone: `git worktree prune` would remove the entry). None without the folder.
+function Worktree-Entries([string]$Dir) {
+  $common = Git-Common $Dir
+  if (-not $common) { return @() }
+  $folder = Join-Path $common 'worktrees'
+  if (-not (Test-Path -LiteralPath $folder -PathType Container)) { return @() }
+  foreach ($entry in @(Get-ChildItem -LiteralPath $folder -Directory)) {
+    $dotGit = First-Line (Join-Path $entry.FullName 'gitdir')
+    $stale = -not $dotGit -or -not (Test-Path -LiteralPath $dotGit -PathType Leaf)
+    $head = First-Line (Join-Path $entry.FullName 'HEAD')
+    $branch = if ($head.StartsWith('ref: refs/heads/')) { $head.Substring(16) } else { '' }
+    [pscustomobject]@{ Folder = $(if ($dotGit) { Split-Path -Parent $dotGit } else { '' }); Branch = $branch; Stale = $stale }
+  }
+}
+
+# One look at the uncommitted changes of the project folder for the whole run (ticket
+# the-worker-script-asks-git-about-20, user decision 1): the lines of one `git status --porcelain
+# --untracked-files=all`, each file of an untracked folder on its own line. The lines serve every check
+# until a git command that can write in the project folder runs (Invoke-GitAt), or Wait-MergeLock saw
+# a switch of Dispatch; none when git fails. The measure verb keeps Tree-Status.
+$script:Dirty = $null
+function Dirty-Lines {
+  if ($null -eq $script:Dirty) {
+    $result = Invoke-Git @('status', '--porcelain', '--untracked-files=all')
+    # An assignment from an if that gives no line would leave $null, so the array is made first.
+    $found = @()
+    if ($result.Code -eq 0) { $found = @($result.Lines | Where-Object { $_.Length -gt 3 -and $_[2] -eq ' ' }) }
+    $script:Dirty = $found
+  }
+  $script:Dirty
+}
+# The path of a line of git status: after the two letters and the blank, the new path of a rename,
+# without quotes, with forward slashes.
+function Line-Path([string]$Line) {
+  if ($Line.Length -le 3) { return '' }
+  "$(($Line.Substring(3) -split ' -> ')[-1])".Trim().Trim('"').Replace('\', '/')
+}
+# Whether a path of git lies under .dispatch, the folder of the task files.
+function Under-Tasks([string]$Path) { $Path.StartsWith('.dispatch/', [StringComparison]::OrdinalIgnoreCase) }
+
+# The paths that a git command lists, unquoted, without the message lines of git ("warning: in the
+# working copy of …" comes through stderr); none when git fails. A Windows path holds no colon.
+function Git-Paths([string[]]$A) {
+  $result = Invoke-Git (@('-c', 'core.quotePath=false') + $A)
+  if ($result.Code -ne 0) { return @() }
+  @($result.Lines | Where-Object { $_ -and $_ -notmatch '^(warning|error|fatal|hint): ' })
 }
 
 # The setting "Task branches" of the project in options.json; off without the file or the field.
@@ -326,6 +593,306 @@ function Branches-On {
   $file = Join-Path $Reports 'options.json'
   if (-not (Test-Path -LiteralPath $file)) { return $false }
   try { return [bool]((Get-Content -LiteralPath $file -Raw) | ConvertFrom-Json).taskBranches } catch { return $false }
+}
+
+# The setting "Work folder" of the project (ticket work-run-in-the-work-folder): on with Task branches
+# and the field workFolders in a git repository; off without the file or the field.
+function Folders-On {
+  (Branches-On) -and (Option-On 'workFolders') -and (Test-Path -LiteralPath (Join-Path $Project '.git'))
+}
+# The setting "Work folders" of the project (ticket up-to-4-work-folders-more-than-one-task): the
+# number of work folders, 1 to 4; 1 without the file or the field.
+function Folder-Count {
+  $file = Join-Path $Reports 'options.json'
+  if (-not (Test-Path -LiteralPath $file)) { return 1 }
+  $count = 1
+  try { $count = [int]((Get-Content -LiteralPath $file -Raw) | ConvertFrom-Json).workFolderCount } catch { return 1 }
+  [Math]::Max(1, [Math]::Min(4, $count))
+}
+# The work folders of the project, git worktrees, and their records: work\1 to work\4. $N is the
+# number of a folder; without it, the folder of this run, which Enter-WorkFolder picks. Not $Folder:
+# the verbs approve and check have a $folder of their own, and PowerShell names ignore case.
+$script:FolderNo = 1
+function Work-Folder([int]$N = $script:FolderNo) { Join-Path $Reports "work\$N" }
+function Work-Record([int]$N = $script:FolderNo) { Join-Path $Reports "work\$N.record" }
+
+# The record of a work folder (rule 5 of docs/work-folders.md): the lines ticket, use (work, check
+# or merge), pid (of the script that wrote it), job (of the claude run, or -) and since. $null without it.
+function Read-Record([int]$N = $script:FolderNo) {
+  $file = Work-Record $N
+  if (-not (Test-Path -LiteralPath $file)) { return $null }
+  $record = @{ ticket = ''; use = ''; pid = ''; job = ''; since = '' }
+  foreach ($line in Get-Content -LiteralPath $file) {
+    if ($line -match '^\s*(ticket|use|pid|job|since):\s*(.*?)\s*$') { $record[$Matches[1]] = $Matches[2] }
+  }
+  [pscustomobject]$record
+}
+function Write-Record([string]$Use, [string]$Job, [int]$N = $script:FolderNo) {
+  [IO.File]::WriteAllText((Work-Record $N), "ticket: $Id`nuse: $Use`npid: $PID`njob: $Job`nsince: $((Get-Date).ToString('o'))`n")
+}
+
+# The workers for the holders of the work folders: Folder-Holders lists them once per look, and only
+# when a record needs them.
+$script:Listed = $null
+$script:ListedOk = $false
+function Listed-Workers {
+  if (-not $script:ListedOk) {
+    $script:Listed = Get-Workers
+    $script:ListedOk = $true
+  }
+  $script:Listed
+}
+
+# The ticket that holds a work folder: the script of the record still runs, or the use is work and
+# the work run of that ticket still runs or waits at a prompt. Else $null: a stale record is
+# overwritten by the next user. No file time and no reflog decides; the time of the record only
+# tells the script of the record from a later process with the same id (Owner-Runs).
+function Record-Holder([int]$N = $script:FolderNo) {
+  $record = Read-Record $N
+  if ($null -eq $record -or -not $record.ticket) { return $null }
+  if ($record.pid -ne "$PID" -and (Owner-Runs $record.pid $record.since)) { return $record.ticket }
+  if ($record.use -eq 'work') {
+    $state = Worker-State (Find-Worker (Listed-Workers) $record.ticket 'work')
+    if ($state -eq 'working' -or $state -eq 'blocked') { return $record.ticket }
+  }
+  $null
+}
+
+# The number of the work folder of this project that the folder $Path is, or 0 (ticket
+# up-to-4-work-folders-more-than-one-task): <project>\.dispatch\work\<n>, with / or \, also with the
+# prefix \\?\, without case.
+function Folder-Number([string]$Path) {
+  $path = "$Path" -replace '/', '\'
+  if ($path.StartsWith('\\?\')) { $path = $path.Substring(4) }
+  $work = [IO.Path]::GetFullPath((Join-Path $Reports 'work')).TrimEnd('\')
+  if ($path -match ('^' + [regex]::Escape($work) + '\\([1-4])\\?$')) { return [int]$Matches[1] }
+  0
+}
+
+# The work folder where the session of the work run of the task runs: the number in the cwd of its
+# newest worker "<ticket> [work]" ($Worker, or the listed one), or 0: a session in the project folder,
+# a worker without cwd (an older Claude Code), or none.
+function Session-Folder($Worker) {
+  if ($null -eq $Worker) { $Worker = Find-Worker (Listed-Workers) $Id 'work' }
+  if ($null -eq $Worker) { return 0 }
+  Folder-Number "$($Worker.cwd)"
+}
+
+# The work folders of the project with their holders: each folder 1 to $Count, and a folder above it
+# that is still on the disk or has a record (the user lowered the number while a task worked there).
+# One object per folder: N, Holder (the ticket, or $null when the folder is free) and Made (the
+# worktree exists).
+function Folder-Holders([int]$Count) {
+  for ($n = 1; $n -le 4; $n++) {
+    $made = Test-Path -LiteralPath (Join-Path (Work-Folder $n) '.git')
+    if ($n -gt $Count -and -not $made -and -not (Test-Path -LiteralPath (Work-Record $n))) { continue }
+    [pscustomobject]@{ N = $n; Holder = (Record-Holder $n); Made = $made }
+  }
+}
+
+# The free work folder for a run of the task without a session folder (approve, a merge, a session
+# that started in the project folder), or 0 when none is free: the folder that has the branch of the
+# task checked out (git checks out a branch in one folder only), else the folder whose record names
+# this ticket, else the lowest free folder that exists, else the lowest number without a folder. A
+# folder above $Count serves only the task of its branch or of its record.
+function Pick-Folder($Holders, [int]$Count) {
+  $free = @($Holders | Where-Object { -not $_.Holder })
+  $info = Read-BranchFile $Id
+  $branch = if ($info -and $info.branch) { $info.branch } else { "task/$Id" }
+  foreach ($entry in @(Worktree-Entries $Project)) {
+    if ($entry.Branch -ne $branch -or -not $entry.Folder) { continue }
+    $n = Folder-Number $entry.Folder
+    if ($n -gt 0 -and @($free | Where-Object { $_.N -eq $n }).Count -gt 0) { return $n }
+  }
+  foreach ($entry in $free) {
+    $record = Read-Record $entry.N
+    if ($null -ne $record -and $record.ticket -eq $Id) { return $entry.N }
+  }
+  foreach ($entry in $free) { if ($entry.Made -and $entry.N -le $Count) { return $entry.N } }
+  foreach ($entry in $free) { if ($entry.N -le $Count) { return $entry.N } }
+  0
+}
+
+# The paths of the plan of this task that the plan of $Ticket names too (ticket
+# up-to-4-work-folders-more-than-one-task, user decision 2): the same path, or a path under a folder
+# path of the other plan, without case; a path under .dispatch never counts.
+function Same-Files([string]$Ticket) {
+  $theirs = @(Plan-Files $Ticket | ForEach-Object { $_.ToLowerInvariant() } | Where-Object { -not $_.StartsWith('.dispatch/') })
+  if ($theirs.Count -eq 0) { return @() }
+  foreach ($path in @(Plan-Files $Id)) {
+    $mine = $path.ToLowerInvariant()
+    if ($mine.StartsWith('.dispatch/')) { continue }
+    $hit = $false
+    foreach ($other in $theirs) {
+      if ($mine -eq $other -or ($other.EndsWith('/') -and $mine.StartsWith($other)) -or ($mine.EndsWith('/') -and $other.StartsWith($mine))) { $hit = $true }
+    }
+    if ($hit) { $path }
+  }
+}
+
+# The job id of the newest worker named "<ticket> [work]", or - (for the record).
+function Work-Job {
+  $workers = @()
+  if ($script:ListedOk) { $workers = @($script:Listed) }
+  else {
+    try {
+      $text = (& claude agents --json --all) -join "`n"
+      if ($LASTEXITCODE -eq 0) { $workers = @($text | ConvertFrom-Json | ForEach-Object { $_ }) }
+    } catch { }
+  }
+  $worker = Find-Worker $workers $Id 'work'
+  if ($null -eq $worker -or "$($worker.name)" -ne (Run-Name 'work') -or -not $worker.id) { return '-' }
+  "$($worker.id)"
+}
+
+# Takes the work folder for the task (ticket work-run-in-the-work-folder) and gives the note for the
+# prompt, or ''. $Use is work (approve, reply, resume) or check (check <ticket-id>). The folder is made
+# once: a git worktree of the base, without .dispatch when the project tracks it, then the set-up
+# command; a failed set-up removes the folder again. Then a change that a run left is committed on
+# its task branch as WIP (or dropped on any other checkout), the task branch is checked out, and for
+# work it takes the newer commits of the base. The settings of Claude Code that the work folder does
+# not track come from the project folder. Last, the record names this task.
+# $Use merge (ticket merge-in-the-work-folder) waits up to 60 s for a free folder (DISPATCH_FOLDER_WAIT
+# seconds, for the tests), writes no branch file, and checks out the tip of the base without a branch.
+# The folder (ticket up-to-4-work-folders-more-than-one-task): a work run with a session ($Worker:
+# reply, resume) and a check run go into the folder where the session of the work run runs, also
+# above the number of work folders, and wait while it is held (user decision 1); approve, a merge and
+# a session without such a folder take Pick-Folder. A work run also waits while a task in another
+# folder has a plan that names a file of this plan (user decision 2). $script:FolderNo is the folder then.
+function Enter-WorkFolder([string]$Use, $Worker) {
+  $count = Folder-Count
+  $session = 0
+  if ($Use -eq 'check' -or ($Use -eq 'work' -and $null -ne $Worker)) { $session = Session-Folder $Worker }
+  $holders = @(Folder-Holders $count)
+  if ($session -gt 0) {
+    $number = $session
+    $holder = Record-Holder $session
+    if ($holder -and $count -eq 1 -and $session -eq 1) { Refuse "the work folder of this project is in use (task $holder); the run starts when it is free" }
+    if ($holder) { Refuse "the work folder $session of this project, where the session of this task runs, is in use (task $holder); the run starts when it is free" }
+  } else {
+    $number = Pick-Folder $holders $count
+    if ($number -eq 0 -and $Use -eq 'merge') {
+      $wait = 60
+      $seconds = 0
+      if ([int]::TryParse("$env:DISPATCH_FOLDER_WAIT", [ref]$seconds) -and $seconds -ge 0) { $wait = $seconds }
+      $deadline = (Get-Date).AddSeconds($wait)
+      while ($number -eq 0 -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 2
+        # A new poll looks at the sessions again.
+        $script:ListedOk = $false
+        $holders = @(Folder-Holders $count)
+        $number = Pick-Folder $holders $count
+      }
+    }
+    if ($number -eq 0) {
+      $what = if ($Use -eq 'merge') { 'merge' } else { 'run' }
+      if ($count -eq 1) { Refuse "the work folder of this project is in use (task $(Record-Holder 1)); the $what starts when it is free" }
+      $names = @($holders | Where-Object { $_.N -le $count -and $_.Holder } | ForEach-Object { $_.Holder } | Select-Object -Unique)
+      Refuse "all $count work folders of this project are in use (tasks $($names -join ', ')); the $what starts when one is free"
+    }
+  }
+  if ($Use -eq 'work') {
+    foreach ($entry in $holders) {
+      if (-not $entry.Holder -or $entry.Holder -eq $Id) { continue }
+      $same = @(Same-Files $entry.Holder)
+      if ($same.Count -gt 0) { Refuse "the task $($entry.Holder) works on the same files ($($same -join ', ')); this work run starts when it has ended" }
+    }
+  }
+  $script:FolderNo = $number
+  $folder = Work-Folder
+  $info = if ($Use -eq 'merge') { Read-BranchFile $Id } else { Ensure-BranchFile }
+  # A task of the old path (ticket moving-a-project): git checks out a branch in one folder only, and
+  # Dispatch switches the project folder back to the base when the run of that task has ended.
+  if ($Use -ne 'merge' -and (Current-Branch) -eq $info.branch) {
+    Refuse "the project folder is on $($info.branch), the branch of this task, from before Work folder was on; Dispatch switches it back to $($info.base) when its run has ended and no file of the task has uncommitted changes (the task card names what holds it); then try again"
+  }
+  # A stale entry (its folder is gone) would refuse the worktree add of its path; a prune with nothing to prune is skipped.
+  if (@(Worktree-Entries $Project | Where-Object { $_.Stale }).Count -gt 0) { Invoke-Git @('worktree', 'prune') | Out-Null }
+  if (-not (Test-Path -LiteralPath (Join-Path $folder '.git'))) {
+    $parent = Split-Path -Parent $folder
+    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+    if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
+    # --detach: the base is checked out in the project folder, and git checks out a branch in one folder only.
+    $made = Invoke-Git @('worktree', 'add', '--detach', $folder, $info.base)
+    if ($made.Code -ne 0) { Refuse "git could not make the work folder $folder (exit code $($made.Code)): $($made.Text)" }
+    $failed = ''
+    if (Tracks-Tasks (Tree-Tasks 'HEAD')) {
+      $sparse = Invoke-GitAt $folder @('sparse-checkout', 'set', '--no-cone', '/*', '!/.dispatch/')
+      if ($sparse.Code -ne 0) { $failed = "git could not leave .dispatch out of the work folder: $($sparse.Text)" }
+    }
+    $setup = "$(@(Command-Lines 'work-setup.txt') | Select-Object -First 1)"
+    if (-not $failed -and $setup) {
+      $log = Join-Path $Reports "work\$number-setup.log"
+      $code = Run-Measured $setup $log (Command-Limit 'work-setup.txt' 3600) $folder
+      if ($code -ne 0) { $failed = "the set-up command of the work folder failed with exit code $code ($setup; the log is $log)" }
+    }
+    if ($failed) {
+      Invoke-Git @('worktree', 'remove', '--force', $folder) | Out-Null
+      if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+      Invoke-Git @('worktree', 'prune') | Out-Null
+      Refuse "${failed}; Dispatch removed the work folder, and the next start makes it again"
+    }
+  }
+  # Only Dispatch and its workers write in the work folder, so it is cleaned without a question.
+  if (Merge-Open $folder) { Invoke-GitAt $folder @('merge', '--abort') | Out-Null }
+  $left = @((Invoke-GitAt $folder @('status', '--porcelain')).Lines | Where-Object { $_ })
+  if ($left.Count -gt 0) {
+    $on = Head-Branch $folder
+    if ($on.StartsWith('task/')) {
+      Invoke-GitAt $folder @('add', '-A', '--', '.', ':(exclude).claude/settings.json', ':(exclude).claude/settings.local.json') | Out-Null
+      $staged = (Invoke-GitAt $folder @('diff', '--cached', '--quiet')).Code -ne 0
+      if ($staged) {
+        $wip = Invoke-GitAt $folder @('commit', '-q', '-m', "$($on.Substring(5)) WIP (Dispatch: files of the work run)")
+        if ($wip.Code -ne 0) { Refuse "git could not commit the files that a run left in the work folder on ${on}: $($wip.Text)" }
+      }
+    }
+    Invoke-GitAt $folder @('reset', '-q', '--hard') | Out-Null
+    Invoke-GitAt $folder @('clean', '-fdq') | Out-Null
+  }
+  $note = ''
+  if ($Use -eq 'merge') {
+    # Step 1 of the section Merge of docs/work-folders.md: the tip of the base, detached.
+    $baseTip = Ref-Hash $Project "refs/heads/$($info.base)"
+    $out = Invoke-GitAt $folder @('checkout', '-q', '-f', '--detach', $baseTip)
+    if ($out.Code -ne 0) { Refuse "git could not check out $($info.base) in the work folder: $($out.Text)" }
+  } elseif (Ref-Hash $Project "refs/heads/$($info.branch)") {
+    # A branch that holds its base, with the folder on it already, stays as it is (ticket
+    # the-worker-script-asks-git-each-fact): the detach, the sync and the checkout would change nothing.
+    $sync = $Use -eq 'work' -and (Sync-Needed)
+    if ($sync) {
+      # The branch takes the newer commits of the base before its checkout (ticket moving-a-project):
+      # Sync-Base takes .dispatch of the base (rule 4), so task files that a branch of the old path
+      # committed make no conflict. It moves the ref only, so the work folder lets go of the branch first.
+      $detach = Invoke-GitAt $folder @('checkout', '-q', '--detach')
+      if ($detach.Code -ne 0) { Refuse "git could not detach the work folder: $($detach.Text)" }
+      $why = "$(Sync-Base -Before)"
+      if ($why) {
+        $why = (($why -replace '"', "'") -replace "`r?`n", ' ').Trim().TrimEnd('.')
+        $note = " Dispatch could not bring the newer commits of $($info.base) into this branch: $why."
+      }
+    }
+    if ($sync -or (Head-Branch $folder) -ne $info.branch) {
+      $out = Invoke-GitAt $folder @('checkout', '-q', $info.branch)
+      if ($out.Code -ne 0) { Refuse "git could not check out $($info.branch) in the work folder: $($out.Text)" }
+    }
+  } else {
+    $out = Invoke-GitAt $folder @('checkout', '-q', '-b', $info.branch, $info.base)
+    if ($out.Code -ne 0) { Refuse "git could not make $($info.branch) in the work folder: $($out.Text)" }
+  }
+  # A session reads .claude of its start folder (open point 2 of docs/work-folders.md). One ls-files
+  # tells for both names whether the work folder tracks them.
+  $names = @(@('settings.json', 'settings.local.json') | Where-Object { Test-Path -LiteralPath (Join-Path $Project ".claude\$_") })
+  if ($names.Count -gt 0) {
+    $tracked = @((Invoke-GitAt $folder (@('ls-files', '--') + @($names | ForEach-Object { ".claude/$_" }))).Lines)
+    foreach ($name in $names) {
+      if ($tracked -contains ".claude/$name") { continue }
+      $target = Join-Path $folder '.claude'
+      if (-not (Test-Path -LiteralPath $target)) { New-Item -ItemType Directory -Path $target -Force | Out-Null }
+      Copy-Item -LiteralPath (Join-Path $Project ".claude\$name") -Destination (Join-Path $target $name) -Force
+    }
+  }
+  Write-Record $Use '-'
+  $note
 }
 
 # The setting "Task files local only" of the project in options.json; off without the file or the field.
@@ -336,11 +903,7 @@ function Tasks-Local {
 }
 
 # The branch that the main checkout is on; empty when HEAD is detached or the folder is no repository.
-function Current-Branch {
-  $result = Invoke-Git @('symbolic-ref', '--short', '-q', 'HEAD')
-  if ($result.Code -ne 0) { return '' }
-  $result.Text
-}
+function Current-Branch { Head-Branch $Project }
 
 # The branch file of a ticket: "branch: task/<ticket>", "base: <branch>", and "merge: done <sha> <time>"
 # after the merge; with Push after the merge also "push: pushed <remote>/<branch> <time>", "push: failed
@@ -378,6 +941,20 @@ function Ensure-BranchFile {
   Read-BranchFile $Id
 }
 
+# Waits up to 60 s while another process holds the merge lock, then refuses with the task of the
+# holder. Without a lock it goes on at once.
+function Wait-MergeLock {
+  $holder = Lock-Holder (Merge-Lock)
+  # The holder switches branches and writes task files: the look at the uncommitted changes is taken again.
+  if ($holder) { $script:Dirty = $null }
+  $deadline = (Get-Date).AddSeconds(60)
+  while ($holder -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 2
+    $holder = Lock-Holder (Merge-Lock)
+  }
+  if ($holder) { Refuse "a merge of this project runs (task $holder); try again when it has ended" }
+}
+
 # Puts the main checkout on the branch of the task, made from its base when it does not exist yet.
 # Gives the branch that was checked out before, or '' when the checkout was on the task branch.
 function Enter-TaskBranch {
@@ -386,35 +963,58 @@ function Enter-TaskBranch {
   if ($current -eq $info.branch) { return '' }
   if ($current.StartsWith('task/')) { Refuse "the checkout is on $current, the branch of another task; Dispatch switches back to the base when that work run has ended" }
   # Dispatch holds the merge lock while it switches back to the base and copies the task files
-  # (ticket merge-issue), for seconds: the switch waits up to 60 s for it, then reads the branch again.
-  $holder = Lock-Holder (Merge-Lock)
-  $deadline = (Get-Date).AddSeconds(60)
-  while ($holder -and (Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds 2
-    $holder = Lock-Holder (Merge-Lock)
-  }
-  if ($holder) { Refuse "a merge of this project runs (task $holder); try again when it has ended" }
+  # (ticket merge-issue), for seconds: the switch waits for it, then reads the branch again.
+  Wait-MergeLock
   # The steps below change the index (ticket title-auto-merge-left-the-main-checkout): an open merge
   # would take them in.
-  if ((Invoke-Git @('rev-parse', '-q', '--verify', 'MERGE_HEAD')).Code -eq 0) { Refuse 'the checkout has an unfinished merge; finish it or run git merge --abort first' }
+  if (Merge-Open $Project) { Refuse 'the checkout has an unfinished merge; finish it or run git merge --abort first' }
   $current = Current-Branch
   if ($current -eq $info.branch) { return '' }
   if ($current.StartsWith('task/')) { Refuse "the checkout is on $current, the branch of another task; Dispatch switches back to the base when that work run has ended" }
-  $exists = (Invoke-Git @('rev-parse', '--verify', '--quiet', "refs/heads/$($info.branch)")).Code -eq 0
+  $tip = Ref-Hash $Project "refs/heads/$($info.branch)"
+  $exists = [bool]$tip
   $kept = @()
+  $synced = ''
+  $headTasks = $null
+  $tipTasks = $null
   if ($exists) {
-    $aligned = "$(Align-Tasks $info.branch)"
+    # The task files of HEAD and of the branch, read once for Align-Tasks and Set-CardFilesAside; the
+    # branch is read again when the alignment or the sync moved it.
+    $headTasks = Tree-Tasks 'HEAD'
+    $tipTasks = Tree-Tasks $tip
+    $aligned = "$(Align-Tasks $info.branch (Tracks-Tasks $tipTasks) (Tracks-Tasks $headTasks))"
     if ($aligned) { Refuse "the checkout stays on ${current}: $aligned" }
     # The branch takes the newer commits of the base before the checkout (ticket merge-issue), so it
     # holds the card files as the base does; a clash leaves it as it was, and Sync-Note tells the
     # worker after the checkout. The card files that still differ go along by hand.
-    Sync-Base -Before | Out-Null
-    if (-not (Tasks-Local)) { $kept = Set-CardFilesAside $info.branch }
+    $synced = "$(Sync-Base -Before)"
+    $moved = Ref-Hash $Project "refs/heads/$($info.branch)"
+    if ($moved -ne $tip) { $tipTasks = Tree-Tasks $moved }
   }
+  # An uncommitted file outside .dispatch that the target holds in another version holds the switch:
+  # git would refuse it (ticket bug-report-from-the-project-rockhoppers). The list comes before
+  # Set-CardFilesAside, so the refusal leaves the disk as it was.
+  $target = if ($exists) { $info.branch } else { $info.base }
+  $blocking = @(Switch-Blockers $target)
+  $why = if ($synced) { " (the newer commits of $($info.base) did not come into $($info.branch): $(($synced -replace "`r?`n", ' ').Trim().TrimEnd('.')))" } else { '' }
+  if ($blocking.Count -gt 0) { Refuse "the checkout stays on ${current}: $($info.branch) has another version of these uncommitted files, and git would overwrite them: $($blocking -join ', '); commit or stash them on $current, then try again$why" }
+  if ($exists -and -not (Tasks-Local)) { $kept = Set-CardFilesAside $info.branch $headTasks $tipTasks }
   $result = if ($exists) { Invoke-Git @('checkout', '-q', $info.branch) } else { Invoke-Git @('checkout', '-q', '-b', $info.branch, $info.base) }
   Put-CardFiles $kept
-  if ($result.Code -ne 0) { Refuse "git could not check out $($info.branch): $($result.Text)" }
+  if ($result.Code -ne 0) { Refuse "git could not check out $($info.branch): $($result.Text)$why" }
   $current
+}
+
+# The uncommitted files outside .dispatch (changed tracked files and untracked files) that HEAD and
+# $Target hold in different versions: a checkout of $Target would overwrite them, so git refuses it.
+function Switch-Blockers([string]$Target) {
+  # From the one look at the uncommitted changes: the changed tracked files first, then the untracked files (?? lines), as git lists them.
+  $lines = @(Dirty-Lines | Where-Object { -not (Under-Tasks (Line-Path $_)) })
+  $dirty = @($lines | Where-Object { -not $_.StartsWith('??') } | ForEach-Object { Line-Path $_ })
+  $dirty += @($lines | Where-Object { $_.StartsWith('??') } | ForEach-Object { Line-Path $_ })
+  if ($dirty.Count -eq 0) { return @() }
+  $other = @(Git-Paths @('diff', '--name-only', '--no-renames', 'HEAD', $Target, '--', '.', ':(exclude).dispatch'))
+  @($dirty | Select-Object -Unique | Where-Object { $other -contains $_ })
 }
 
 # The card files that a checkout of $Target would delete or change (ticket merge-issue): the changed
@@ -422,11 +1022,20 @@ function Enter-TaskBranch {
 # bytes and times and gives each file the copy of HEAD (a file that HEAD lacks goes from the disk), so
 # git meets no changed card file; Put-CardFiles writes them again after the checkout. Dispatch commits
 # no card file on a task branch, so they stay changes there until the switch back.
-function Set-CardFilesAside([string]$Target) {
-  $paths = @((Invoke-Git @('status', '--porcelain', '--untracked-files=all', '--', '.dispatch')).Lines | Where-Object { $_.Length -gt 3 } | ForEach-Object { $_.Substring(3) -split ' -> ' })
-  $paths += @((Invoke-Git @('diff', '--name-only', '--no-renames', 'HEAD', $Target, '--', '.dispatch')).Lines)
+# $HeadTasks and $TargetTasks are the task files of HEAD and of $Target (Tree-Tasks): a path whose hash
+# differs, or that one of them lacks, differs between the two. A card is tracked when HEAD has it. The
+# git calls go in two batches, and only for the cards with an uncommitted change: a card without one
+# equals HEAD in the index and on the disk already, so git had nothing to do for it.
+function Set-CardFilesAside([string]$Target, $HeadTasks, $TargetTasks) {
+  if ($null -eq $HeadTasks) { $HeadTasks = @{} }
+  if ($null -eq $TargetTasks) { $TargetTasks = @{} }
+  $changed = @(Dirty-Lines | Where-Object { Under-Tasks (Line-Path $_) } | ForEach-Object { $_.Substring(3) -split ' -> ' } | ForEach-Object { "$_".Trim().Trim('"') } | Where-Object { $_ })
+  $paths = @($changed)
+  foreach ($path in @(@($HeadTasks.Keys) + @($TargetTasks.Keys) | Sort-Object -Unique)) {
+    if ($HeadTasks[$path] -ne $TargetTasks[$path]) { $paths += $path }
+  }
   $kept = @()
-  foreach ($path in @($paths | ForEach-Object { "$_".Trim().Trim('"') } | Where-Object { $_ } | Select-Object -Unique)) {
+  foreach ($path in @($paths | Where-Object { $_ } | Select-Object -Unique)) {
     $file = Join-Path $Project $path
     if (Test-Path -LiteralPath $file -PathType Leaf) {
       $kept += [pscustomobject]@{ Path = $path; Bytes = [IO.File]::ReadAllBytes($file); Time = [IO.File]::GetLastWriteTimeUtc($file) }
@@ -434,14 +1043,18 @@ function Set-CardFilesAside([string]$Target) {
       $kept += [pscustomobject]@{ Path = $path; Bytes = $null; Time = $null }
     }
   }
+  $reset = @()
+  $drop = @()
   foreach ($card in $kept) {
-    if ((Invoke-Git @('cat-file', '-e', "HEAD:$($card.Path)")).Code -eq 0) {
-      Invoke-Git @('checkout', '-q', 'HEAD', '--', $card.Path) | Out-Null
+    if ($HeadTasks.ContainsKey($card.Path)) {
+      if ($changed -contains $card.Path) { $reset += $card.Path }
     } else {
-      Invoke-Git @('rm', '-q', '--cached', '--ignore-unmatch', '--', $card.Path) | Out-Null
+      if ($changed -contains $card.Path) { $drop += $card.Path }
       Remove-Item -LiteralPath (Join-Path $Project $card.Path) -Force -ErrorAction SilentlyContinue
     }
   }
+  if ($reset.Count -gt 0) { Invoke-Git (@('checkout', '-q', 'HEAD', '--') + $reset) | Out-Null }
+  if ($drop.Count -gt 0) { Invoke-Git (@('rm', '-q', '--cached', '--ignore-unmatch', '--') + $drop) | Out-Null }
   ,$kept
 }
 
@@ -467,7 +1080,7 @@ function Put-CardFiles($Kept) {
 function Merge-Branch($Info, [string]$Gate, [int]$Limit) {
   $branch = $Info.branch
   $merge = Invoke-Git @('merge', '--no-ff', '--no-commit', $branch)
-  $open = (Invoke-Git @('rev-parse', '-q', '--verify', 'MERGE_HEAD')).Code -eq 0
+  $open = Merge-Open $Project
   if (-not $open) {
     if ($merge.Code -ne 0) { return "git could not merge ${branch}: $($merge.Text)" }
     # Nothing to merge: the branch has no commit that the base lacks.
@@ -503,6 +1116,10 @@ function Merge-Branch($Info, [string]$Gate, [int]$Limit) {
       }
     }
   }
+  # The tracked files outside .dispatch that differ from the index before the checks and the gate
+  # (ticket bug-report-from-the-project-rockhoppers): the merged files match the index, so these are
+  # the changes of the user. A file that differs only after the gate is a file that the gate wrote.
+  $dirtyBefore = @(Git-Paths @('diff', '--name-only', '--', '.', ':(exclude).dispatch'))
   # Pick the checks after the work run: the ticked checks run on the merged code before the gate, and
   # the first failed one aborts the merge. With Checks at the gate and a gate command, the gate runs them.
   if ((Option-On 'pickChecks') -and -not ($Gate -and (Option-On 'checksAtGate'))) {
@@ -535,8 +1152,193 @@ function Merge-Branch($Info, [string]$Gate, [int]$Limit) {
     return "git could not commit the merge: $($commit.Text)"
   }
   $script:Merged = (Invoke-Git @('rev-parse', '--short', 'HEAD')).Text
+  # The tracked files that the checks and the gate changed go into a commit of their own on the base,
+  # so no line of the gate (a log) stays uncommitted and holds the next switch to a task branch.
+  # Untracked files stay: they can be build output. A failure does not undo the merge.
+  $written = @(Git-Paths @('diff', '--name-only', 'HEAD', '--', '.', ':(exclude).dispatch') | Where-Object { $dirtyBefore -notcontains $_ })
+  if ($written.Count -gt 0) {
+    $own = Invoke-Git (@('commit', '-q', '-m', "${Id}: files that the merge gate wrote", '--') + $written)
+    if ($own.Code -ne 0) { [Console]::Error.WriteLine("warning: git could not commit the files that the merge gate wrote ($($written -join ', ')): $($own.Text)") }
+  }
   Invoke-Git @('branch', '-d', $branch) | Out-Null
   Write-BranchFile $branch $Info.base "done $script:Merged $((Get-Date).ToString('s'))"
+  ''
+}
+
+# The picked checks and the gate command in the work folder on an open merge of the base tip and the
+# branch tip with the files of the merge commit $Merge, as with Work folders off (ticket
+# merge-in-the-work-folder, steps 3 and 4 of the section Merge of docs/work-folders.md), with the texts
+# of Merge-Branch; a failure cancels the open merge. After they pass, HEAD moves to $Merge; the tree
+# there was clean, so each tracked file that differs from HEAD then is a file that they wrote, and it
+# goes into a commit on top. Gives the reason of a refusal, or ''; then
+# $script:GateTop is the commit on top, or '' when they wrote no tracked file.
+function Gate-InWorkFolder([string]$Merge, [string]$Gate, [int]$Limit) {
+  $work = Work-Folder
+  $script:GateTop = ''
+  $out = Invoke-GitAt $work @('checkout', '-q', '-f', '--detach', $Merge)
+  if ($out.Code -ne 0) { return "git could not check out the merge in the work folder: $($out.Text)" }
+  # The open merge of git merge --no-ff --no-commit (ticket the-gate-in-the-work-folder-sees-an-open):
+  # HEAD on the first parent (the base tip), MERGE_HEAD the second (the branch tip); the index and the
+  # work tree keep the merged files of $Merge.
+  $parents = @((Invoke-GitAt $work @('rev-parse', "$Merge^1", "$Merge^2")).Lines | Where-Object { $_ -match '^[0-9a-f]{40,64}$' })
+  if ($parents.Count -ne 2) { return "git could not read the two parents of the merge $Merge in the work folder" }
+  $gitDir = Git-Dir $work
+  if (-not $gitDir) { return "Dispatch could not find the git folder of the work folder $work" }
+  $out = Invoke-GitAt $work @('update-ref', '--no-deref', 'HEAD', $parents[0])
+  if ($out.Code -ne 0) { return "git could not open the merge in the work folder: $($out.Text)" }
+  $subject = (Invoke-GitAt $work @('log', '-1', '--format=%s', $Merge)).Text
+  [IO.File]::WriteAllText((Join-Path $gitDir 'MERGE_HEAD'), "$($parents[1])`n")
+  [IO.File]::WriteAllText((Join-Path $gitDir 'MERGE_MODE'), 'no-ff')
+  [IO.File]::WriteAllText((Join-Path $gitDir 'MERGE_MSG'), "$subject`n")
+  if ((Option-On 'pickChecks') -and -not ($Gate -and (Option-On 'checksAtGate'))) {
+    $dir = Join-Path $Reports 'merge'
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    $failed = Run-Checks 'merge' { param($n) Join-Path $Reports "merge\$Id-$n.log" } (Command-Limit 'checks.txt' 14400) -StopAtFailure -RunIn $work
+    if ($null -ne $failed) {
+      Invoke-GitAt $work @('merge', '--abort') | Out-Null
+      $tail = if (Test-Path -LiteralPath $failed.Log) { (Get-Content -LiteralPath $failed.Log -Tail 40) -join "`n" } else { '' }
+      return "the check $($failed.Name) failed with exit code $($failed.Code), so nothing was merged ($($failed.Command); the log is $($failed.Log)). Its last 40 lines:`n$tail"
+    }
+  }
+  if ($Gate) {
+    $log = Join-Path $Reports "merge\$Id.log"
+    $env:DISPATCH_TICKET = $Id
+    $env:DISPATCH_CHECKS = Join-Path $Reports "$Id.checks"
+    $code = Run-Measured $Gate $log $Limit $work
+    Remove-Item Env:DISPATCH_TICKET, Env:DISPATCH_CHECKS -ErrorAction SilentlyContinue
+    if ($code -ne 0) {
+      Invoke-GitAt $work @('merge', '--abort') | Out-Null
+      $tail = if (Test-Path -LiteralPath $log) { (Get-Content -LiteralPath $log -Tail 40) -join "`n" } else { '' }
+      return "the gate command failed with exit code $code, so nothing was merged ($Gate; the log is $log). Its last 40 lines:`n$tail"
+    }
+  }
+  # A check or a gate that committed or cancelled the open merge stops it (user decision 1): HEAD and
+  # MERGE_HEAD are still the two parents of $Merge, or nothing is merged.
+  $still = @((Invoke-GitAt $work @('rev-parse', 'HEAD', 'MERGE_HEAD')).Lines | Where-Object { $_ -match '^[0-9a-f]{40,64}$' })
+  if ($still.Count -ne 2 -or $still[0] -ne $parents[0] -or $still[1] -ne $parents[1]) {
+    if (Test-Path -LiteralPath (Join-Path $gitDir 'MERGE_HEAD') -PathType Leaf) { Invoke-GitAt $work @('merge', '--abort') | Out-Null }
+    return "the checks or the gate command committed or cancelled the open merge in the work folder, so nothing was merged; a gate must leave the merge open"
+  }
+  # The merge closes on $Merge: the diff below then lists only the files that the checks and the gate wrote.
+  foreach ($name in @('MERGE_HEAD', 'MERGE_MODE', 'MERGE_MSG')) { Remove-Item -LiteralPath (Join-Path $gitDir $name) -Force -ErrorAction SilentlyContinue }
+  $out = Invoke-GitAt $work @('update-ref', '--no-deref', 'HEAD', $Merge)
+  if ($out.Code -ne 0) { return "git could not set the work folder on the merge commit: $($out.Text)" }
+  $changed = Invoke-GitAt $work @('-c', 'core.quotePath=false', 'diff', '--name-only', 'HEAD', '--', '.', ':(exclude).dispatch')
+  $written = @($changed.Lines | Where-Object { $_ -and $_ -notmatch '^(warning|error|fatal|hint): ' })
+  if ($changed.Code -eq 0 -and $written.Count -gt 0) {
+    $own = Invoke-GitAt $work (@('commit', '-q', '-m', "${Id}: files that the merge gate wrote", '--') + $written)
+    if ($own.Code -eq 0) { $script:GateTop = Head-Hash $work }
+    else { [Console]::Error.WriteLine("warning: git could not commit the files that the merge gate wrote ($($written -join ', ')): $($own.Text)") }
+  }
+  ''
+}
+
+# The commit that the base can move to with no new gate run (ticket merge-in-the-work-folder, user
+# decision 1): the file merge\<ticket>.gated names the merge on which the checks and the gate passed,
+# the commit on top of it (or -) and the tip of the task branch. With the same branch tip and the same
+# files outside .dispatch as $Merge, the gated commit is taken as it is when it has the same first
+# parent, else its commit on top is picked onto $Merge in the work folder. '' when no gate passed on
+# this code.
+function Gated-Target([string]$Merge, [string]$BranchTip, [string]$MergeParent) {
+  $file = Join-Path $Reports "merge\$Id.gated"
+  if (-not (Test-Path -LiteralPath $file)) { return '' }
+  $fields = @("$(Get-Content -LiteralPath $file -Raw -ErrorAction SilentlyContinue)".Trim() -split "`t")
+  if ($fields.Count -lt 3 -or $fields[2] -ne $BranchTip) { return '' }
+  $old = $fields[0]
+  $top = if ($fields[1] -eq '-') { '' } else { $fields[1] }
+  # One cat-file --batch-check through stdin (ticket the-worker-script-asks-git-each-fact): the gated
+  # commit, its commit on top, and the first parent of the gated commit; a line "<name> missing" means
+  # the object is gone. $MergeParent is the base tip that Build-Merge took as the first parent of $Merge.
+  $asked = @("${old}^{commit}")
+  if ($top) { $asked += "${top}^{commit}" }
+  $asked += "${old}^1"
+  $ErrorActionPreference = 'Continue'
+  $found = @($asked | & git -C $Project cat-file --batch-check 2>&1 | ForEach-Object { "$_" })
+  $ErrorActionPreference = 'Stop'
+  if ($found.Count -ne $asked.Count) { return '' }
+  for ($i = 0; $i -lt $asked.Count - 1; $i++) {
+    if ($found[$i] -notmatch '^[0-9a-f]+ commit \d+$') { return '' }
+  }
+  $oldParent = if ($found[$found.Count - 1] -match '^([0-9a-f]+) commit \d+$') { $Matches[1] } else { '' }
+  if ((Invoke-Git @('diff', '--quiet', $old, $Merge, '--', '.', ':(exclude).dispatch')).Code -ne 0) { return '' }
+  if ($oldParent -eq $MergeParent) {
+    if ($top) { return $top }
+    return $old
+  }
+  if (-not $top) { return $Merge }
+  $work = Work-Folder
+  if ((Invoke-GitAt $work @('checkout', '-q', '-f', '--detach', $Merge)).Code -ne 0) { return '' }
+  $pick = Invoke-GitAt $work @('cherry-pick', $top)
+  if ($pick.Code -ne 0) {
+    Invoke-GitAt $work @('cherry-pick', '--abort') | Out-Null
+    return ''
+  }
+  Head-Hash $work
+}
+
+# The merge with Work folder on (ticket merge-in-the-work-folder, steps 1 to 7 of the section Merge of
+# docs/work-folders.md): the work folder on the tip of the base, the merge as a finished commit
+# (Build-Merge), the checks and the gate there on an open merge of the base tip and the branch tip with
+# its files (Gate-InWorkFolder), unless a gate passed on the same code (Gated-Target), and then the base moves in one step: git merge --ff-only in the project
+# folder when it is on the base, else git update-ref with the old tip as the condition. A base that
+# moved gets a new merge, up to 3 times. An uncommitted file of the project folder that the move would
+# overwrite stops it, and the gated merge stays for the next Merge. The project folder never has an
+# open merge. Gives the reason of a refusal, or '' after the merge; $script:Merged holds the commit then.
+function Merge-InWorkFolder($Info, [string]$Gate, [int]$Limit) {
+  $branch = $Info.branch
+  $base = $Info.base
+  Enter-WorkFolder 'merge' | Out-Null
+  $gated = Join-Path $Reports "merge\$Id.gated"
+  $branchTip = Ref-Hash $Project "refs/heads/$branch"
+  $built = $null
+  $from = ''
+  $target = ''
+  $moves = 0
+  while ($true) {
+    $now = Ref-Hash $Project "refs/heads/$base"
+    if ($now -ne $from) {
+      if ($from) {
+        $moves++
+        if ($moves -ge 3) { return "the base $base moved three times during the merge; click Merge again" }
+      }
+      $built = Build-Merge $now $Info
+      if ($built.Why) { return "git could not merge ${branch}: $($built.Why)" }
+      if ($built.Conflicts.Count -gt 0) { return "the merge of $branch into $base does not apply; nothing was merged. Conflicts in:`n$($built.Conflicts -join "`n")" }
+      if (-not $built.Commit) {
+        # Nothing to merge: the base holds the branch.
+        Invoke-Git @('branch', '-D', $branch) | Out-Null
+        $script:Merged = 'nothing to merge'
+        Write-BranchFile $branch $base "done nothing-to-merge $((Get-Date).ToString('s'))"
+        Remove-Item -LiteralPath $gated -Force -ErrorAction SilentlyContinue
+        return ''
+      }
+      $from = $now
+      $target = Gated-Target $built.Commit $branchTip $now
+      if (-not $target) {
+        $why = Gate-InWorkFolder $built.Commit $Gate $Limit
+        if ($why) { return $why }
+        $target = if ($script:GateTop) { $script:GateTop } else { $built.Commit }
+        $top = if ($script:GateTop) { $script:GateTop } else { '-' }
+        [IO.File]::WriteAllText($gated, "$($built.Commit)`t$top`t$branchTip`t$((Get-Date).ToString('o'))`n")
+        # The gate can run for hours: the base is read again before the move.
+        continue
+      }
+    }
+    if ((Current-Branch) -eq $base) {
+      $blocking = @(Switch-Blockers $target)
+      if ($blocking.Count -gt 0) { return "these uncommitted files of the project folder would be overwritten by the merge; commit, stash or undo them, then click Merge again: $($blocking -join ', ')" }
+      $move = Invoke-Git @('merge', '--ff-only', '-q', $target)
+    } else {
+      $move = Invoke-Git @('update-ref', "refs/heads/$base", $target, $now)
+    }
+    if ($move.Code -eq 0) { break }
+    $after = Ref-Hash $Project "refs/heads/$base"
+    if ($after -eq $now) { return "git could not move ${base}: $($move.Text)" }
+  }
+  $script:Merged = (Invoke-Git @('rev-parse', '--short', $target)).Text
+  Invoke-Git @('branch', '-D', $branch) | Out-Null
+  Write-BranchFile $branch $base "done $script:Merged $((Get-Date).ToString('s'))"
+  Remove-Item -LiteralPath $gated -Force -ErrorAction SilentlyContinue
   ''
 }
 
@@ -544,8 +1346,18 @@ function Merge-Branch($Info, [string]$Gate, [int]$Limit) {
 # upstream branch (branch.<base>.remote and branch.<base>.merge), never with force, without a prompt
 # for a password, with the time limit of 300 s. Gives the value of the push line of the branch file.
 function Push-Base([string]$Base) {
-  $remote = (Invoke-Git @('config', '--get', "branch.$Base.remote")).Text
-  $target = (Invoke-Git @('config', '--get', "branch.$Base.merge")).Text
+  # The two keys in one call (ticket the-worker-script-asks-git-about-20): each line `<key> <value>`; as
+  # with --get, the last line of a key counts. A branch name can hold a character of a regular expression.
+  $key = $Base -replace '([.^$*+?()\[\]{}|\\])', '\$1'
+  $remote = ''
+  $target = ''
+  foreach ($line in @((Invoke-Git @('config', '--get-regexp', "^branch\.$key\.(remote|merge)$")).Lines)) {
+    $at = "$line".IndexOf(' ')
+    if ($at -lt 0) { continue }
+    $value = $line.Substring($at + 1).Trim()
+    if ($line.Substring(0, $at) -eq "branch.$Base.remote") { $remote = $value }
+    elseif ($line.Substring(0, $at) -eq "branch.$Base.merge") { $target = $value }
+  }
   if (-not $remote -or $remote -eq '.' -or -not $target.StartsWith('refs/heads/')) { return 'no-upstream' }
   $folder = Join-Path $Reports 'merge'
   if (-not (Test-Path -LiteralPath $folder)) { New-Item -ItemType Directory -Path $folder | Out-Null }
@@ -579,9 +1391,10 @@ function Tree-Status {
 
 # The paths of the section "Files to change" of the plan of the task (ticket leftover-files-block-tasks):
 # each path in backticks, and the first word of a list item when it is no backtick span. A path has a
-# / or a dot and no space; a trailing ,:;.) goes. The Rust rule plan_files is the same.
-function Plan-Files {
-  $file = Join-Path $Reports "plans\$Id.md"
+# / or a dot and no space; a trailing ,:;.) goes. The Rust rule plan_files is the same. $Ticket, when
+# given, reads the plan of that task (the rule of the same files of Enter-WorkFolder).
+function Plan-Files([string]$Ticket = $Id) {
+  $file = Join-Path $Reports "plans\$Ticket.md"
   if (-not (Test-Path -LiteralPath $file)) { return @() }
   $files = New-Object System.Collections.Generic.List[string]
   $inside = $false
@@ -610,12 +1423,14 @@ function Plan-Files {
 # files that the task branch changed while it exists and is not merged, and with -Plan also the paths
 # of Plan-Files. The Rust rule task_leftovers is the same.
 function Task-Leftovers([switch]$Plan) {
-  $dirty = @(& git -C $Project status --porcelain -- . ':(exclude).dispatch' | Where-Object { $_ })
+  # The one look at the uncommitted changes (user decision 1 of ticket the-worker-script-asks-git-about-20)
+  # lists each file of an untracked folder, where the look of the task card lists the folder.
+  $dirty = @(Dirty-Lines | Where-Object { -not (Under-Tasks (Line-Path $_)) })
   if ($dirty.Count -eq 0) { return @() }
   $files = @()
   if ($Plan) { $files += @(Plan-Files) }
   $info = Read-BranchFile $Id
-  if ($info -and $info.branch -and $info.base -and -not $info.merge -and (Invoke-Git @('rev-parse', '--verify', '--quiet', "refs/heads/$($info.branch)")).Code -eq 0) {
+  if ($info -and $info.branch -and $info.base -and -not $info.merge -and (Ref-Hash $Project "refs/heads/$($info.branch)")) {
     $diff = Invoke-Git @('diff', '--name-only', "$($info.base)...$($info.branch)")
     if ($diff.Code -eq 0) { $files += @($diff.Lines | Where-Object { $_ }) }
   }
@@ -676,15 +1491,54 @@ function Commit-Own([string[]]$Lines) {
 # -Before: the checkout is not on the branch yet (ticket merge-issue); the merge commit then moves the
 # ref of the branch only. Its .dispatch is the one of the base, so `git log <base>..<branch> --
 # .dispatch` does not list it.
+# It reads the base commit once (ticket bringing-main-into-a-task-branch-can); a commit that lands during the step comes in at the next sync.
+# The two calls of one Approve or reply, before and after the checkout, see the same base and the same
+# branch tip, so the second gives the answer of the first (ticket the-worker-script-asks-git-about-20:
+# $script:Synced keeps the pair and the answer; after a sync the pair holds the new tip). A branch at
+# the hash of its base holds the base, with no question to git.
+$script:Synced = @{ Base = ''; Tip = ''; Why = '' }
 function Sync-Base([switch]$Before) {
   $info = Read-BranchFile $Id
   if ($null -eq $info -or -not $info.branch -or -not $info.base -or $info.merge) { return '' }
   $on = (Current-Branch) -eq $info.branch
   if ($on -eq [bool]$Before) { return '' }
-  if ((Invoke-Git @('rev-parse', '--verify', '--quiet', "refs/heads/$($info.base)")).Code -ne 0) { return "the branch $($info.base) does not exist" }
-  if ((Invoke-Git @('merge-base', '--is-ancestor', $info.base, $info.branch)).Code -eq 0) { return '' }
-  $tip = "$((Invoke-Git @('rev-parse', '--verify', "refs/heads/$($info.branch)")).Lines | Select-Object -Last 1)".Trim()
-  $merge = Invoke-Git @('merge-tree', '--write-tree', '--name-only', '--no-messages', $info.branch, $info.base)
+  $baseId = Ref-Hash $Project "refs/heads/$($info.base)"
+  if (-not $baseId) { return "the branch $($info.base) does not exist" }
+  $tip = Ref-Hash $Project "refs/heads/$($info.branch)"
+  if ($script:Synced.Base -eq $baseId -and $script:Synced.Tip -eq $tip) { return $script:Synced.Why }
+  $script:SyncMade = $tip
+  $why = if ($baseId -eq $tip) { '' } else { "$(Sync-Commit $info $baseId $tip $on)" }
+  $script:Synced = @{ Base = $baseId; Tip = $(if ($why) { $tip } else { $script:SyncMade }); Why = $why }
+  $why
+}
+# Whether the task branch lacks a commit of its base, with no write (ticket
+# the-worker-script-asks-git-each-fact): a branch at the hash of its base, or a pair that $script:Synced
+# holds, needs no question to git, else one merge-base. An ancestor fills $script:Synced, so Sync-Base
+# returns at once; a commit that is no ancestor goes into $script:SyncAsked, so Sync-Commit does not ask
+# again for the same pair. Both are keyed on the two hashes, and the answer for two commits never
+# changes. A missing branch file, base or branch counts as needed: Sync-Base then gives its reason.
+$script:SyncAsked = @{ Base = ''; Tip = '' }
+function Sync-Needed {
+  $info = Read-BranchFile $Id
+  if ($null -eq $info -or -not $info.branch -or -not $info.base -or $info.merge) { return $true }
+  $baseId = Ref-Hash $Project "refs/heads/$($info.base)"
+  $tip = Ref-Hash $Project "refs/heads/$($info.branch)"
+  if (-not $baseId -or -not $tip) { return $true }
+  if ($baseId -eq $tip) { return $false }
+  if ($script:Synced.Base -eq $baseId -and $script:Synced.Tip -eq $tip) { return [bool]$script:Synced.Why }
+  if ((Invoke-Git @('merge-base', '--is-ancestor', $baseId, $info.branch)).Code -eq 0) {
+    $script:Synced = @{ Base = $baseId; Tip = $tip; Why = '' }
+    return $false
+  }
+  $script:SyncAsked = @{ Base = $baseId; Tip = $tip }
+  $true
+}
+# The sync itself: the merge commit of the branch tip $Tip and the base commit $BaseId, and the move of
+# the branch; $script:SyncMade is the new tip after a success. Gives the reason, or ''.
+function Sync-Commit($info, [string]$baseId, [string]$tip, [bool]$on) {
+  $asked = $script:SyncAsked.Base -eq $baseId -and $script:SyncAsked.Tip -eq $tip
+  if (-not $asked -and (Invoke-Git @('merge-base', '--is-ancestor', $baseId, $info.branch)).Code -eq 0) { return '' }
+  $merge = Invoke-Git @('merge-tree', '--write-tree', '--name-only', '--no-messages', $info.branch, $baseId)
   $lines = @($merge.Lines | Where-Object { $_ })
   if (($merge.Code -ne 0 -and $merge.Code -ne 1) -or $lines.Count -eq 0) { return "git merge-tree failed: $($merge.Text)" }
   $clash = @($lines | Select-Object -Skip 1 | Where-Object { -not $_.StartsWith('.dispatch/') })
@@ -695,8 +1549,8 @@ function Sync-Base([switch]$Before) {
   try {
     $built = (Invoke-Git @('read-tree', $lines[0])).Code -eq 0
     if ($built) { $built = (Invoke-Git @('rm', '--cached', '-r', '-q', '-f', '--ignore-unmatch', '--', '.dispatch')).Code -eq 0 }
-    if ($built -and (Invoke-Git @('rev-parse', '--verify', '--quiet', "$($info.base):.dispatch")).Code -eq 0) {
-      $built = (Invoke-Git @('read-tree', '--prefix=.dispatch/', "$($info.base):.dispatch")).Code -eq 0
+    if ($built -and (Invoke-Git @('rev-parse', '--verify', '--quiet', "${baseId}:.dispatch")).Code -eq 0) {
+      $built = (Invoke-Git @('read-tree', '--prefix=.dispatch/', "${baseId}:.dispatch")).Code -eq 0
     }
     $tree = if ($built) { Invoke-Git @('write-tree') } else { $null }
   } finally {
@@ -704,18 +1558,90 @@ function Sync-Base([switch]$Before) {
     Remove-Item -LiteralPath $index -Force -ErrorAction SilentlyContinue
   }
   if ($null -eq $tree -or $tree.Code -ne 0) { return 'git could not build the merged tree' }
-  $commit = Invoke-Git @('commit-tree', "$($tree.Lines | Select-Object -Last 1)".Trim(), '-p', $tip, '-p', $info.base, '-m', "Merge $($info.base) into $($info.branch) (${Id}: the newer commits of the base)")
+  $commit = Invoke-Git @('commit-tree', "$($tree.Lines | Select-Object -Last 1)".Trim(), '-p', $tip, '-p', $baseId, '-m', "Merge $($info.base) into $($info.branch) (${Id}: the newer commits of the base)")
   if ($commit.Code -ne 0) { return "git could not make the merge commit: $($commit.Text)" }
   $made = "$($commit.Lines | Select-Object -Last 1)".Trim()
   $forward = if ($on) { Invoke-Git @('merge', '--ff-only', '-q', $made) } else { Invoke-Git @('update-ref', "refs/heads/$($info.branch)", $made, $tip) }
   if ($forward.Code -ne 0) { return "git could not move the branch: $($forward.Text)" }
+  $script:SyncMade = $made
   ''
 }
 
-# Whether a commit tracks a file under .dispatch.
-function Tracks-Tasks([string]$Rev) {
-  $result = Invoke-Git @('ls-tree', '-r', '--name-only', $Rev, '--', '.dispatch')
-  $result.Code -eq 0 -and @($result.Lines | Where-Object { $_ }).Count -gt 0
+# Builds the merge of the task branch into the commit $Tip as a finished commit, with no checkout and
+# no index of a folder (ticket merge-in-the-work-folder, steps 2 and 6 of the section Merge of
+# docs/work-folders.md): git merge-tree, the folder .dispatch as $Tip has it (rule 4: a card file that
+# a worker committed goes), and a commit with $Tip and the branch tip as parents, as merge --no-ff
+# makes it. Gives Commit (the sha; '' when $Tip holds the branch), Conflicts (the paths outside
+# .dispatch that changed on both sides) and Why (the error of git, or '').
+function Build-Merge([string]$Tip, $Info) {
+  $built = [pscustomobject]@{ Commit = ''; Conflicts = @(); Why = '' }
+  $head = Ref-Hash $Project "refs/heads/$($Info.branch)"
+  # A branch at the tip holds nothing new; else git tells whether the tip holds it.
+  if ($head -eq $Tip -or (Invoke-Git @('merge-base', '--is-ancestor', $head, $Tip)).Code -eq 0) { return $built }
+  $merge = Invoke-Git @('-c', 'core.quotePath=false', 'merge-tree', '--write-tree', '--name-only', '--no-messages', $Tip, $head)
+  $lines = @($merge.Lines | Where-Object { $_ })
+  if (($merge.Code -ne 0 -and $merge.Code -ne 1) -or $lines.Count -eq 0) {
+    $built.Why = "git merge-tree failed: $($merge.Text)"
+    return $built
+  }
+  $built.Conflicts = @($lines | Select-Object -Skip 1 | Where-Object { -not $_.StartsWith('.dispatch/') } | Select-Object -Unique)
+  if ($built.Conflicts.Count -gt 0) { return $built }
+  # A separate index builds the tree; the index of the project folder stays as it is.
+  $index = Join-Path ([IO.Path]::GetTempPath()) "dispatch-merge-$PID.index"
+  $env:GIT_INDEX_FILE = $index
+  try {
+    $done = (Invoke-Git @('read-tree', $lines[0])).Code -eq 0
+    if ($done) { $done = (Invoke-Git @('rm', '--cached', '-r', '-q', '-f', '--ignore-unmatch', '--', '.dispatch')).Code -eq 0 }
+    if ($done -and (Invoke-Git @('rev-parse', '--verify', '--quiet', "${Tip}:.dispatch")).Code -eq 0) {
+      $done = (Invoke-Git @('read-tree', '--prefix=.dispatch/', "${Tip}:.dispatch")).Code -eq 0
+    }
+    $tree = if ($done) { Invoke-Git @('write-tree') } else { $null }
+  } finally {
+    Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $index -Force -ErrorAction SilentlyContinue
+  }
+  if ($null -eq $tree -or $tree.Code -ne 0) {
+    $built.Why = 'git could not build the merged tree'
+    return $built
+  }
+  $commit = Invoke-Git @('commit-tree', "$($tree.Lines | Select-Object -Last 1)".Trim(), '-p', $Tip, '-p', $head, '-m', "Merge $($Info.branch) into $($Info.base) ($Id)")
+  if ($commit.Code -ne 0) {
+    $built.Why = "git could not make the merge commit: $($commit.Text)"
+    return $built
+  }
+  $built.Commit = "$($commit.Lines | Select-Object -Last 1)".Trim()
+  $built
+}
+
+# The files under .dispatch that the commit $Rev tracks (ticket the-worker-script-asks-git-about-20): a
+# table path → blob hash from one `ls-tree -r <rev> -- .dispatch` (`<mode> <type> <hash><TAB><path>`);
+# $null when the command fails. Tracks-Tasks: whether a table holds a file.
+function Tree-Tasks([string]$Rev) {
+  $result = Invoke-Git @('-c', 'core.quotePath=false', 'ls-tree', '-r', $Rev, '--', '.dispatch')
+  if ($result.Code -ne 0) { return $null }
+  $table = @{}
+  foreach ($line in $result.Lines) {
+    $tab = $line.IndexOf("`t")
+    if ($tab -lt 0) { continue }
+    $meta = @($line.Substring(0, $tab) -split ' ')
+    if ($meta.Count -lt 3) { continue }
+    $table[$line.Substring($tab + 1)] = $meta[2]
+  }
+  $table
+}
+function Tracks-Tasks($Table) { $null -ne $Table -and $Table.Count -gt 0 }
+# Whether each of the commits $Revs tracks a file under .dispatch, in one `cat-file --batch-check` of the
+# trees <rev>:.dispatch through stdin (a commit with the folder has a tree there; git stores no empty
+# tree in a commit): a table rev → $true or $false. Tracks-Tasks of a table of Tree-Tasks says the same.
+function Tasks-Tracked([string[]]$Revs) {
+  $ErrorActionPreference = 'Continue'
+  $lines = @(($Revs | ForEach-Object { "${_}:.dispatch" }) | & git -C $Project cat-file --batch-check 2>&1 | ForEach-Object { "$_" })
+  $ErrorActionPreference = 'Stop'
+  $table = @{}
+  for ($i = 0; $i -lt $Revs.Count; $i++) {
+    $table[$Revs[$i]] = $i -lt $lines.Count -and $lines[$i] -match '^[0-9a-f]+ tree \d+$'
+  }
+  $table
 }
 
 # Makes a task branch hold the task files the way the checkout holds them (ticket
@@ -724,15 +1650,14 @@ function Tracks-Tasks([string]$Rev) {
 # HEAD tracks none, gets a commit that takes the folder out of git. Off: a branch that tracks none,
 # while HEAD tracks some, gets the folder as HEAD has it. Git writes a tracked file of the target over
 # an ignored file, and deletes a tracked file that the target lacks. It moves the ref only, through an
-# index of its own; nothing is checked out. Gives the reason of a failure, or ''.
-function Align-Tasks([string]$Branch) {
+# index of its own; nothing is checked out. Gives the reason of a failure, or ''. $branchTracks and
+# $headTracks say whether the branch tip and HEAD track a file of .dispatch (Tracks-Tasks of a table of
+# Tree-Tasks, or Tasks-Tracked); the caller reads them.
+function Align-Tasks([string]$Branch, [bool]$branchTracks, [bool]$headTracks) {
   $ref = "refs/heads/$Branch"
-  $old = Invoke-Git @('rev-parse', '--verify', '--quiet', $ref)
-  if ($old.Code -ne 0) { return '' }
-  $tip = "$($old.Lines | Select-Object -Last 1)".Trim()
+  $tip = Ref-Hash $Project $ref
+  if (-not $tip) { return '' }
   $local = Tasks-Local
-  $branchTracks = Tracks-Tasks $tip
-  $headTracks = Tracks-Tasks 'HEAD'
   if ($local -and -not ($branchTracks -and -not $headTracks)) { return '' }
   if (-not $local -and -not ($headTracks -and -not $branchTracks)) { return '' }
   $message = if ($local) { 'Dispatch: task files are local only' } else { 'Dispatch: task files in git again' }
@@ -766,14 +1691,17 @@ function Sync-Note {
 
 # Runs one measuring command with cmd.exe in the project folder, its output into the log. The
 # command goes into a batch file next to the log, so a redirect of its own stays its own. A command
-# that runs longer than the limit is ended with its process tree; the result is then 124.
-function Run-Measured([string]$Command, [string]$Log, [int]$Limit) {
+# that runs longer than the limit is ended with its process tree; the result is then 124. $RunIn,
+# when given, is the folder of the command in place of the project folder (the work folder).
+function Run-Measured([string]$Command, [string]$Log, [int]$Limit, [string]$RunIn) {
+  # A command of the project can write any file: the look at the uncommitted changes ends here (Dirty-Lines).
+  $script:Dirty = $null
   $batch = [IO.Path]::ChangeExtension($Log, '.cmd')
   [IO.File]::WriteAllText($batch, "@echo off`r`n$Command`r`n")
   $info = New-Object System.Diagnostics.ProcessStartInfo
   $info.FileName = $env:ComSpec
   $info.Arguments = "/d /s /c `"`"$batch`" > `"$Log`" 2>&1`""
-  $info.WorkingDirectory = $Project
+  $info.WorkingDirectory = if ($RunIn) { $RunIn } else { $Project }
   $info.UseShellExecute = $false
   $info.CreateNoWindow = $true
   $process = [Diagnostics.Process]::Start($info)
@@ -813,8 +1741,9 @@ function Clear-Picks {
 # places 'run' and 'full' each result goes to the console as "<name>: exit <code>", not into the pipeline. With -StopAtFailure the
 # run ends at the first failed check and gives its name, exit code, command and log; else it gives
 # $null after every check ran. $List and $Checked, when given, replace the list file and the results
-# file of the task (the full run).
-function Run-Checks([string]$Place, [scriptblock]$LogOf, [int]$Limit, [switch]$StopAtFailure, [string]$List, [string]$Checked) {
+# file of the task (the full run). $RunIn, when given, is the folder of the checks (the work folder);
+# not $Folder: $LogOf of the verb check reads its own $folder, and PowerShell names ignore case.
+function Run-Checks([string]$Place, [scriptblock]$LogOf, [int]$Limit, [switch]$StopAtFailure, [string]$List, [string]$Checked, [string]$RunIn) {
   $checked = if ($Checked) { $Checked } else { Join-Path $Reports "$Id.checked" }
   [IO.File]::WriteAllText($checked, "running`t$((Get-Date).ToString('o'))`t$Place`n")
   $n = 0
@@ -826,7 +1755,7 @@ function Run-Checks([string]$Place, [scriptblock]$LogOf, [int]$Limit, [switch]$S
     if (-not $name -or -not $command) { continue }
     $log = & $LogOf $n
     $started = Get-Date
-    $code = Run-Measured $command $log $Limit
+    $code = Run-Measured $command $log $Limit $RunIn
     $seconds = [int][Math]::Round(((Get-Date) - $started).TotalSeconds)
     [IO.File]::AppendAllText($checked, "$name`t$code`t$seconds`n")
     # The merge verb prints its merge line first: Dispatch reads the first line of its output.
@@ -840,12 +1769,89 @@ function Run-Checks([string]$Place, [scriptblock]$LogOf, [int]$Limit, [switch]$S
   return $null
 }
 
+# The prompt of a new work run up to the end of its checks (ticket moving-a-project): approve, and a
+# reply or resume that takes over a work run whose session started in the project folder. The text
+# only; the caller removes the pick files first (Clear-Picks) when Pick the checks after the work run is on.
+function Work-Prompt {
+  # The work run is a new session (ticket work-fresh-session): the prompt names the ticket, the
+  # brief, the plan and the report file, and the files are its whole input.
+  $plan = Join-Path $Reports "plans\$Id.md"
+  $brief = Join-Path $Reports "briefs\$Id.md"
+  $report = Join-Path $Reports "$Id.md"
+  $prompt = "Plan approved: $plan. This is the work run of ticket $Id. Read the brief $brief and the plan first: they are the whole context of this run, and the sections User decisions and Checks chosen of the plan hold the choices of the user. Execute the plan. A deviation goes into the report, not into the code. Commit only the files that this run changed, each by name in git add and git commit; never run git add -A, git add . or git commit -a, and leave every other change in the checkout as it is. Write the report to $report."
+  # Pick the checks after the work run: the run is told that the checks come after it. Else the
+  # checks that the user chose at Approve (ticket task-checks): one line per check, the name, a tab and the command. A quote of a name becomes an apostrophe, as in a reply.
+  $chosen = Join-Path $Reports "$Id.checks"
+  if (Option-On 'pickChecks') {
+    $prompt += " The checks of this project are picked by Dispatch after this run: run the Acceptance commands of the plan, but no check of the list checks.txt beyond them."
+  }
+  # Confirm check results automatically (ticket confirm-a-check-step-s-result-on-the): the run does
+  # not stop at a check step whose result the user would confirm.
+  if (Option-On 'confirmResults') {
+    $prompt += " Confirm check results automatically is on: a check step whose result the user would confirm does not stop this run; take the result as it is, write it into the report under the heading Check result, and go on."
+  }
+  if (Test-Path -LiteralPath $chosen) {
+    $names = @(Get-Content -LiteralPath $chosen | Where-Object { $_.Trim() -ne '' } | ForEach-Object { ($_ -split "`t", 2)[0].Trim() -replace '"', "'" })
+    # Checks at the gate (ticket simpler-process): with task branches and a gate command, the gate
+    # runs the chosen checks once, at the merge, so the work run does not run them.
+    $gateLine = "$(@(Command-Lines 'merge-gate.txt') | Select-Object -First 1)"
+    if ($names.Count -gt 0 -and (Option-On 'checksAtGate') -and (Branches-On) -and $gateLine) {
+      $prompt += " The user chose these checks: $($names -join ', '). Checks at the gate is on: the gate command runs them once, at the merge, so this run does not run them and needs no Verification claim for them."
+    } elseif ($names.Count -gt 0) {
+      $prompt += " The user chose these checks: $($names -join ', '). Run each with the command of the section Checks chosen of the plan, as written there: Dispatch looks for that command in the commands of this run."
+    }
+  }
+  $prompt
+}
+
+# The sentence of the work folder for the prompt of a new work run (ticket work-run-in-the-work-folder).
+# With more than one work folder (ticket up-to-4-work-folders-more-than-one-task) it names the number
+# of the folder, and a build folder that the project rules share between runs gets that number (user
+# decision 3).
+function Folder-Sentence {
+  $info = Read-BranchFile $Id
+  $count = Folder-Count
+  if ($count -eq 1 -and $script:FolderNo -eq 1) {
+    return " Work folder is on: this run works in the folder $(Work-Folder), a checkout of the branch $($info.branch) of this task; the project folder $Project stays on $($info.base). Commit in the work folder; switch no branch, merge nothing, push nothing. Write the report and every task file by their full paths in $Reports; the work folder has no copy of them. When this run stops with a question or fails, first commit its own changed files by name on this branch with the message $Id WIP."
+  }
+  " Work folder is on: this run works in the work folder $script:FolderNo of $count, the folder $(Work-Folder), a checkout of the branch $($info.branch) of this task; the project folder $Project stays on $($info.base). Commit in the work folder; switch no branch, merge nothing, push nothing. Write the report and every task file by their full paths in $Reports; the work folder has no copy of them. When this run stops with a question or fails, first commit its own changed files by name on this branch with the message $Id WIP. Up to $count work runs of this project run at the same time, one per work folder: a build or test output folder that the project rules share between runs keeps its name in work folder 1 and gets the suffix -<n> in work folder <n>, so this run uses the suffix -$script:FolderNo when its number is above 1 (the variable DISPATCH_WORK_FOLDER is $script:FolderNo), and two runs never write into one such folder."
+}
+
+# True when $Worker started in another folder than a work folder of this project (ticket
+# moving-a-project; with more than one work folder, ticket up-to-4-work-folders-more-than-one-task). A
+# worker without cwd (an older Claude Code) counts as a worker of a work folder.
+function Old-Session($Worker) {
+  $cwd = "$($Worker.cwd)"
+  if (-not $cwd) { return $false }
+  (Folder-Number $cwd) -eq 0
+}
+
 # Resumes the session of $Worker for $Run with $Text: the start of reply and of resume. $State, when
 # given, is written before the branch switch; without it a tracked branch rewrites the current state.
 # The own changes of a stopped run are found while the state still says stopped: the state file time
 # is the end of that run. A failed claude writes $StateOnFailure back when one is given.
 function Resume-Run([string]$Run, $Worker, [string]$Text, [string]$State, [string]$StateOnFailure) {
   $flags = Run-Flags $Run
+  # Work folder (ticket work-run-in-the-work-folder): a work run goes on in the work folder on the
+  # branch of its task; the project folder is not switched, and its changes hold nothing.
+  # A session that started in the project folder (a task of the old path, ticket moving-a-project)
+  # may not be found from the work folder and remembers the paths of the project folder: a new
+  # session in the work folder takes it over (user decision 1).
+  if ($Run -eq 'work' -and (Folders-On)) {
+    $note = Enter-WorkFolder 'work' $Worker
+    if ($State) { Set-State $State }
+    if (Old-Session $Worker) {
+      $info = Read-BranchFile $Id
+      $prompt = (Work-Prompt) + " This work run started in the project folder before Work folder was on, and its session cannot go on in the work folder, so this new session takes it over. Its work so far is committed on the branch $($info.branch). Read its report $(Join-Path $Reports "$Id.md") too: it holds its questions and what it did. The user's words to that session: $Text"
+      $prompt += (Folder-Sentence) + $note
+      $printed = Run-Claude (@($prompt, '--bg', '--name', (Run-Name $Run)) + $flags) $StateOnFailure '' (Work-Folder)
+    } else {
+      $printed = Run-Claude (@(($Text + $note), '--resume', $Worker.sessionId, '--bg', '--name', (Run-Name $Run)) + $flags) $StateOnFailure '' (Work-Folder)
+    }
+    Save-Session $Run $printed
+    Write-Record 'work' (Work-Job)
+    return
+  }
   # Task branches: a work run goes on on the branch of its task, also after Dispatch switched back.
   $branch = if ($Run -eq 'work' -and (Branches-On)) { Read-BranchFile $Id } else { $null }
   $tracked = $null -ne $branch -and -not $branch.merge
@@ -911,47 +1917,33 @@ switch ($Verb) {
     Need-Id
     $plan = Join-Path $Reports "plans\$Id.md"
     if (-not (Test-Path -LiteralPath $plan)) { Refuse "no plan at $plan" }
-    if (Test-Path -LiteralPath (Join-Path $Project '.git')) {
+    # Work folder (ticket work-run-in-the-work-folder): the work run uses its own folder, so an
+    # uncommitted change of the user in the project folder holds no Approve.
+    if ((Test-Path -LiteralPath (Join-Path $Project '.git')) -and -not (Folders-On)) {
       # Only a change in a file of this task holds it (ticket leftover-files-block-tasks); the other
       # changes stay where they are. The task files in .dispatch do not count: Dispatch commits them
-      # itself, and triage can write a brief at any time.
+      # itself, and triage can write a brief at any time. The staged files of a running merge are no
+      # changes of the user (ticket approve-during-a-merge-is-refused-by-the): the check waits until
+      # the merge has committed or was undone.
+      Wait-MergeLock
       $held = @(Task-Leftovers -Plan)
       if ($held.Count -gt 0) { Refuse "these changes in files of this task are not committed; commit, stash or undo them first:`n$($held -join "`n")" }
     }
     Approve-Check
     $flags = Run-Flags 'work'
-    # The work run is a new session (ticket work-fresh-session): the prompt names the ticket, the
-    # brief, the plan and the report file, and the files are its whole input.
-    $brief = Join-Path $Reports "briefs\$Id.md"
-    $report = Join-Path $Reports "$Id.md"
-    $prompt = "Plan approved: $plan. This is the work run of ticket $Id. Read the brief $brief and the plan first: they are the whole context of this run, and the sections User decisions and Checks chosen of the plan hold the choices of the user. Execute the plan. A deviation goes into the report, not into the code. Commit only the files that this run changed, each by name in git add and git commit; never run git add -A, git add . or git commit -a, and leave every other change in the checkout as it is. Write the report to $report."
-    # Pick the checks after the work run: the files of an earlier pick go, and the run is told that the
-    # checks come after it. Else the checks that the user chose at Approve (ticket task-checks): one
-    # line per check, the name, a tab and the command. A quote of a name becomes an apostrophe, as in a reply.
-    $chosen = Join-Path $Reports "$Id.checks"
-    if (Option-On 'pickChecks') {
-      Clear-Picks
-      $prompt += " The checks of this project are picked by Dispatch after this run: run the Acceptance commands of the plan, but no check of the list checks.txt beyond them."
-    }
-    # Confirm check results automatically (ticket confirm-a-check-step-s-result-on-the): the run does
-    # not stop at a check step whose result the user would confirm.
-    if (Option-On 'confirmResults') {
-      $prompt += " Confirm check results automatically is on: a check step whose result the user would confirm does not stop this run; take the result as it is, write it into the report under the heading Check result, and go on."
-    }
-    if (Test-Path -LiteralPath $chosen) {
-      $names = @(Get-Content -LiteralPath $chosen | Where-Object { $_.Trim() -ne '' } | ForEach-Object { ($_ -split "`t", 2)[0].Trim() -replace '"', "'" })
-      # Checks at the gate (ticket simpler-process): with task branches and a gate command, the gate
-      # runs the chosen checks once, at the merge, so the work run does not run them.
-      $gateLine = "$(@(Command-Lines 'merge-gate.txt') | Select-Object -First 1)"
-      if ($names.Count -gt 0 -and (Option-On 'checksAtGate') -and (Branches-On) -and $gateLine) {
-        $prompt += " The user chose these checks: $($names -join ', '). Checks at the gate is on: the gate command runs them once, at the merge, so this run does not run them and needs no Verification claim for them."
-      } elseif ($names.Count -gt 0) {
-        $prompt += " The user chose these checks: $($names -join ', '). Run each with the command of the section Checks chosen of the plan, as written there: Dispatch looks for that command in the commands of this run."
-      }
-    }
+    # Pick the checks after the work run: the files of an earlier pick go before the prompt reads them.
+    if (Option-On 'pickChecks') { Clear-Picks }
+    $prompt = Work-Prompt
     # Task branches: the work run works on the branch of the task; a failed start checks out the branch before.
+    # Work folder: it works in the work folder on that branch, and the project folder stays on the base.
     $back = ''
-    if (Branches-On) {
+    $folder = ''
+    if (Folders-On) {
+      $note = Enter-WorkFolder 'work'
+      $folder = Work-Folder
+      $prompt += Folder-Sentence
+      $prompt += $note
+    } elseif (Branches-On) {
       $back = Enter-TaskBranch
       $prompt += " Task branches is on: the checkout is on the branch $((Read-BranchFile $Id).branch) of this task. Commit there; switch no branch, merge nothing, push nothing. When this run stops with a question or fails, first commit its own changed files by name on this branch with the message $Id WIP."
       # An existing branch (a new plan after an earlier work run) takes the newer commits of the base.
@@ -962,9 +1954,10 @@ switch ($Verb) {
     # and nothing of the context of the plan run (ticket work-fresh-session); the model switch stays.
     # The name keeps the session with the task and marks it as the work run: Dispatch and this script
     # find a worker by its name.
-    $printed = Run-Claude (@($prompt, '--bg', '--name', (Run-Name 'work')) + $flags) 'planning' $back
+    $printed = Run-Claude (@($prompt, '--bg', '--name', (Run-Name 'work')) + $flags) 'planning' $back $folder
     Set-State 'working'
     Save-Session 'work' $printed
+    if ($folder) { Write-Record 'work' (Work-Job) }
   }
   'reply' {
     Need-Id
@@ -1037,26 +2030,41 @@ switch ($Verb) {
     $info = Read-BranchFile $Id
     if ($null -eq $info -or -not $info.branch -or -not $info.base) { Refuse "the task $Id has no branch file" }
     if ($info.merge) { Refuse "the branch $($info.branch) is merged already: $($info.merge)" }
-    if ((Invoke-Git @('rev-parse', '--verify', '--quiet', "refs/heads/$($info.branch)")).Code -ne 0) { Refuse "the branch $($info.branch) does not exist; the task had no work run" }
+    $tip = Ref-Hash $Project "refs/heads/$($info.branch)"
+    if (-not $tip) { Refuse "the branch $($info.branch) does not exist; the task had no work run" }
     $current = Current-Branch
-    if ($current -ne $info.base) { Refuse "the checkout is on $current, not on the base $($info.base); Dispatch switches back when the work run has ended" }
-    if ((Invoke-Git @('rev-parse', '-q', '--verify', 'MERGE_HEAD')).Code -eq 0) { Refuse 'the checkout has an unfinished merge; finish it or run git merge --abort first' }
-    # Only a change in a file that the branch changes holds the merge (ticket leftover-files-block-tasks);
-    # the gate then runs with the other changes in the folder.
-    $held = @(Task-Leftovers)
-    if ($held.Count -gt 0) { Refuse "the checkout has uncommitted changes in files that the branch changes; commit, stash or undo them first:`n$($held -join "`n")" }
-    # The changed task files (the tickets file among them) go into one commit first, so git merge
-    # never meets a changed file of .dispatch. With "Task files local only" on, git tracks none.
-    $local = Tasks-Local
-    $tasks = if ($local) { @() } else { @((Invoke-Git @('status', '--porcelain', '--untracked-files=all', '--', '.dispatch')).Lines | Where-Object { $_ }) }
-    if ($tasks.Count -gt 0) {
-      Invoke-Git @('add', '--all', '--', '.dispatch') | Out-Null
-      $saved = Invoke-Git @('commit', '-q', '-m', "Dispatch: task files before the merge of $Id", '--', '.dispatch')
-      if ($saved.Code -ne 0) { Refuse "git could not commit the task files before the merge: $($saved.Text)" }
+    # Work folder (ticket merge-in-the-work-folder): the merge runs in the work folder, so the project
+    # folder can be on any branch and its task files stay as they are.
+    $folders = Folders-On
+    # A task of the old path (ticket moving-a-project): the merge would move the base and leave the
+    # project folder on a merged branch.
+    if ($folders -and $current -eq $info.branch) {
+      Refuse "the project folder is on $($info.branch), the branch of this task, from before Work folder was on; Dispatch switches it back to $($info.base) when its run has ended and no file of the task has uncommitted changes (the task card names what holds it); then click Merge again"
     }
-    # The branch holds the task files as the base does, so the merge deletes none of them.
-    $aligned = "$(Align-Tasks $info.branch)"
-    if ($aligned) { Refuse $aligned }
+    if (-not $folders) {
+      if ($current -ne $info.base) { Refuse "the checkout is on $current, not on the base $($info.base); Dispatch switches back when the work run has ended" }
+      if (Merge-Open $Project) { Refuse 'the checkout has an unfinished merge; finish it or run git merge --abort first' }
+    }
+    # Only a change in a file that the branch changes holds the merge (ticket leftover-files-block-tasks);
+    # the gate then runs with the other changes in the folder. With Work folder on, only while the
+    # project folder is on the base: then the move would meet the change, and no gate runs in vain.
+    $held = if (-not $folders -or $current -eq $info.base) { @(Task-Leftovers) } else { @() }
+    if ($held.Count -gt 0) { Refuse "the checkout has uncommitted changes in files that the branch changes; commit, stash or undo them first:`n$($held -join "`n")" }
+    if (-not $folders) {
+      # The changed task files (the tickets file among them) go into one commit first, so git merge
+      # never meets a changed file of .dispatch. With "Task files local only" on, git tracks none.
+      $local = Tasks-Local
+      $tasks = if ($local) { @() } else { @(Dirty-Lines | Where-Object { Under-Tasks (Line-Path $_) }) }
+      if ($tasks.Count -gt 0) {
+        Invoke-Git @('add', '--all', '--', '.dispatch') | Out-Null
+        $saved = Invoke-Git @('commit', '-q', '-m', "Dispatch: task files before the merge of $Id", '--', '.dispatch')
+        if ($saved.Code -ne 0) { Refuse "git could not commit the task files before the merge: $($saved.Text)" }
+      }
+      # The branch holds the task files as the base does, so the merge deletes none of them.
+      $tracked = Tasks-Tracked @($tip, 'HEAD')
+      $aligned = "$(Align-Tasks $info.branch $tracked[$tip] $tracked['HEAD'])"
+      if ($aligned) { Refuse $aligned }
+    }
     $gate ="$(@(Command-Lines 'merge-gate.txt') | Select-Object -First 1)"
     $limit = Command-Limit 'merge-gate.txt' 14400
     # A switch back of Dispatch holds the lock for seconds (ticket merge-issue): the merge waits up to 60 s.
@@ -1068,14 +2076,25 @@ switch ($Verb) {
     $aborted = Join-Path $Reports "merge\$Id.aborted"
     Remove-Item -LiteralPath $aborted -Force -ErrorAction SilentlyContinue
     $marker = Join-Path $Reports 'merge\open'
-    $tip = (Invoke-Git @('rev-parse', "refs/heads/$($info.branch)")).Text
-    $head = (Invoke-Git @('rev-parse', 'HEAD')).Text
-    [IO.File]::WriteAllText($marker, "$PID`t$Id`t$tip`t$head`t$((Get-Date).ToString('o'))`n")
+    $tip = Ref-Hash $Project "refs/heads/$($info.branch)"
+    $head = Head-Hash $Project
+    if ($folders) {
+      # The sixth field folder: the merge runs in the work folder, and the fourth field is the tip of
+      # the base; Dispatch cancels no merge in the project folder for it.
+      $head = Ref-Hash $Project "refs/heads/$($info.base)"
+      [IO.File]::WriteAllText($marker, "$PID`t$Id`t$tip`t$head`t$((Get-Date).ToString('o'))`tfolder`n")
+    } else {
+      [IO.File]::WriteAllText($marker, "$PID`t$Id`t$tip`t$head`t$((Get-Date).ToString('o'))`n")
+    }
     try {
-      $refusal = "$(Merge-Branch $info $gate $limit)"
+      $refusal = if ($folders) { "$(Merge-InWorkFolder $info $gate $limit)" } else { "$(Merge-Branch $info $gate $limit)" }
     } finally {
-      # Every way out inside PowerShell (a refusal, an error, Ctrl+C) leaves no open merge.
-      if (-not $script:Merged -and (Invoke-Git @('rev-parse', '-q', '--verify', 'MERGE_HEAD')).Code -eq 0) {
+      if ($folders) {
+        # A merge left in the work folder stays there; its next user cleans it.
+        $record = Read-Record
+        if ($null -ne $record -and $record.pid -eq "$PID") { Remove-Item -LiteralPath (Work-Record) -Force -ErrorAction SilentlyContinue }
+      } elseif (-not $script:Merged -and (Merge-Open $Project)) {
+        # Every way out inside PowerShell (a refusal, an error, Ctrl+C) leaves no open merge.
         Invoke-Git @('merge', '--abort') | Out-Null
       }
       Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
@@ -1124,9 +2143,18 @@ switch ($Verb) {
     # merge lock stays free: it guards the checkout, and Dispatch waits for it at the switch back.
     Enter-Lock (Lock-Path) $limit 'check run'
     try {
-      Run-Checks 'run' { param($n) Join-Path $folder "$n.log" } $limit | Out-Null
+      # Work folder (ticket work-run-in-the-work-folder): the checks run in the work folder on the task
+      # branch, and the record names this run until it ends.
+      if (Folders-On) {
+        Enter-WorkFolder 'check' | Out-Null
+        Run-Checks 'run' { param($n) Join-Path $folder "$n.log" } $limit -RunIn (Work-Folder) | Out-Null
+      } else {
+        Run-Checks 'run' { param($n) Join-Path $folder "$n.log" } $limit | Out-Null
+      }
     } finally {
       Exit-Lock (Lock-Path)
+      $record = Read-Record
+      if ($null -ne $record -and $record.pid -eq "$PID") { Remove-Item -LiteralPath (Work-Record) -Force -ErrorAction SilentlyContinue }
     }
   }
   'stop' {
