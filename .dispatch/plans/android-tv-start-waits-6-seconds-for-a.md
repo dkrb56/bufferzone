@@ -83,3 +83,15 @@ On Android TV, the start continues right after the first server address answers.
 model: opus
 effort: medium
 The code change is small and clear; most of the work is the measurement on the TV.
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-24 18:57. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Should only the server check stop its slow tries, or every network request of the TV app?: Only the server check stops its slow tries
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-24 17:57 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests

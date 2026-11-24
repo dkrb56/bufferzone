@@ -87,6 +87,18 @@ model: opus
 effort: medium
 The code change is small and clear; most of the work is the measurement on the TV.
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-24 18:57. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Should only the server check stop its slow tries, or every network request of the TV app?: Only the server check stops its slow tries
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-24 17:57 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests
+
 ## Stages
 
 ### STAGE: PLAN
@@ -230,28 +242,355 @@ Files: .dispatch/plans/android-tv-start-waits-6-seconds-for-a.md
 Blockers: Should only the server check stop its slow tries, or every network request of the TV app?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-24T17:57:13.965Z
+COMMAND: cd /d/dev_projects/buffer-zone; cat .dispatch/briefs/android-tv-start-waits-6-seconds-for-a.md; echo ======; cat .dispatch/plans/android-tv-start-waits-6-seconds-for-a.md; echo =====; cat .dispatch/android-tv-start-waits-6-seconds-for-a.checks
+EXIT: 0
+OUTPUT:
+    ## Size
+    1 file (`Plex.kt`), about 25 lines.
+    
+    ## Work run
+    model: opus
+    effort: medium
+    The code change is small and clear; most of the work is the measurement on the TV.
+    
+    ## User decisions
+    
+    The user took these decisions in Dispatch on 2026-11-24 18:57. Each replaces the Default, HOLD and Other options of the decision with the same number.
+    
+    1. Should only the server check stop its slow tries, or every network request of the TV app?: Only the server check stops its slow tries
+    
+    ## Checks chosen
+    
+    The user chose these checks in Dispatch on 2026-11-24 17:57 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+    
+    - [ ] android/gradle tests
+    =====
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-24T17:57:19.128Z
+COMMAND: cd /d/dev_projects/buffer-zone; F=android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt; sed -n 1,30p $F; echo ...; sed -n 190,260p $F; cat .dispatch/checks.txt; grep -n "connect\|probe" android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt | head -30
+EXIT: 0
+OUTPUT:
+            val conns = res.connections
+            return first(conns.filter { !it.relay }) ?: first(conns.filter { it.relay })
+        }
+    
+        suspend fun connect(res: Resource): Server {
+            val c = probe(res) ?: throw PlexException("Cannot reach server \"${res.name}\". It may be offline.")
+            val s = Server(res.clientIdentifier, res.name, c.uri.trimEnd('/'), res.accessToken ?: token ?: "", c.local, c.relay)
+            server = s
+            return s
+        }
+    android/gradle tests | gradle -p android test
+    150:                go(Screen.Message("Cannot reach plex.tv", "Check the network connection of the TV.") { start() }, root = true); return@launch
+    153:            reconnect()
+    157:    suspend fun reconnect() {
+    160:            go(Screen.Message("Cannot load servers", it.message ?: "") { scope.launch { reconnect() } }, root = true); return
+    163:        try { connect(saved) } catch (e: Exception) {
+    164:            go(Screen.Message("Cannot connect", e.message ?: "") { go(Screen.Onboard(2), root = true) }, root = true); return
+    171:    suspend fun connect(res: Resource) {
+    172:        plex.connect(res)
+    190:            plex.connect(res)
+
+### EVIDENCE: WORK 2026-11-24T17:57:24.449Z
+COMMAND: cd /d/dev_projects/buffer-zone; F=android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt; python - <<'EOF'
+    p='android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt'
+    s=open(p,encoding='utf-8').read()
+    a='''        val conns = res.connections
+            return first(conns.filter { !it.relay }) ?: first(conns.filter { it.relay })'''
+    b='''        val conns = res.connections
+            android.util.Log.i("BufferZone", "TMP probe begin")
+            val tmpR = first(conns.filter { !it.relay }) ?: first(conns.filter { it.relay })
+            android.util.Log.i("BufferZone", "TMP probe end ${tmpR?.uri}")
+            return tmpR'''
+    assert s.count(a)==1
+    open(p,'w',encoding='utf-8',newline='').write(s.replace(a,b))
+    EOF
+    git diff --stat; echo "JAVA_HOME=$JAVA_HOME"; which adb gradle
+EXIT: 1
+OUTPUT:
+    Exit code 1
+    warning: in the working copy of '.dispatch/android-tv-start-waits-6-seconds-for-a.models', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/android-tv-start-waits-6-seconds-for-a.session', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/android-tv-start-waits-6-seconds-for-a.state', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/briefs/android-tv-start-waits-6-seconds-for-a.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/logs/android-tv-start-waits-6-seconds-for-a.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/plans/android-tv-start-waits-6-seconds-for-a.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt', LF will be replaced by CRLF the next time Git touches it
+     .../android-tv-start-waits-6-seconds-for-a.models  |  1 +
+     .../android-tv-start-waits-6-seconds-for-a.session |  1 +
+     .../android-tv-start-waits-6-seconds-for-a.state   |  2 +-
+     .../android-tv-start-waits-6-seconds-for-a.md      |  4 ++
+     .../logs/android-tv-start-waits-6-seconds-for-a.md | 65 +++++++++++++++++++++-
+     .../android-tv-start-waits-6-seconds-for-a.md      | 12 ++++
+     .../src/main/java/com/dkrb56/bufferzone/Plex.kt    |  5 +-
+     7 files changed, 86 insertions(+), 4 deletions(-)
+    JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.20.101-hotspot\
+    which: no gradle in (/c/Users/dani/bin:/mingw64/bin:/usr/local/bin:/usr/bin:/bin:/mingw64/bin:/usr/bin:/c/Users/dani/bin:/c/Program Files/Microsoft/jdk-17.0.20.101-hotspot/bin:/c/Program Files/Oculus/…
+    /c/Users/dani/AppData/Local/Microsoft/WinGet/Packages/Google.PlatformTools_Microsoft.Winget.Source_8wekyb3d8bbwe/platform-tools/adb
+
+### EVIDENCE: WORK 2026-11-24T17:57:27.921Z
+COMMAND: cd /d/dev_projects/buffer-zone/android; ./gradlew.bat assembleDebug -q 2>&1 | tail -15; echo EXIT $?; adb connect 192.168.50.60:5555
+EXIT: 0
+OUTPUT:
+    EXIT 0
+    already connected to 192.168.50.60:5555
+
+### EVIDENCE: WORK 2026-11-24T17:58:47.361Z
+COMMAND: cd /d/dev_projects/buffer-zone; ls -la android/app/build/outputs/apk/debug/; cat > "$CLAUDE_JOB_DIR/tmp/measure.sh" <<'EOF'
+    D=192.168.50.60:5555
+    P=com.dkrb56.bufferzone
+    for i in 1 2 3; do
+      adb -s $D shell am force-stop $P
+      adb -s $D logcat -c
+      adb -s $D shell monkey -p $P -c android.intent.category.LAUNCHER 1 >/dev/null
+      for t in $(seq 1 40); do
+        out=$(adb -s $D logcat -d -v time -s BufferZone)
+        echo "$out" | grep -q "TMP probe end" && break
+        sleep 1
+      done
+      echo "--- start $i"; echo "$out" | grep -E "TMP probe|BufferZone" | tail -8
+    done
+    EOF
+    adb -s 192.168.50.60:5555 install -r android/app/build/outputs/apk/debug/app-debug.apk && bash "$CLAUDE_JOB_DIR/tmp/measure.sh"
+EXIT: 0
+OUTPUT:
+     arg: "android.intent.category.LAUNCHER"
+     arg: "1"
+    data="com.dkrb56.bufferzone"
+    data="android.intent.category.LAUNCHER"
+    --- start 2
+    11-24 18:59:09.686 I/BufferZone( 7030): start
+    11-24 18:59:11.760 I/BufferZone( 7030): TMP probe begin
+    11-24 18:59:17.780 I/BufferZone( 7030): TMP probe end http://plex.v12.appboxmanager.xyz:80
+    args: [-p, com.dkrb56.bufferzone, -c, android.intent.category.LAUNCHER, 1]
+     arg: "-p"
+     arg: "com.dkrb56.bufferzone"
+     arg: "-c"
+     arg: "android.intent.category.LAUNCHER"
+     arg: "1"
+    data="com.dkrb56.bufferzone"
+    data="android.intent.category.LAUNCHER"
+    --- start 3
+    11-24 18:59:22.598 I/BufferZone( 7162): start
+    11-24 18:59:24.470 I/BufferZone( 7162): TMP probe begin
+    11-24 18:59:30.485 I/BufferZone( 7162): TMP probe end http://plex.v12.appboxmanager.xyz:80
+
+### EVIDENCE: WORK 2026-11-24T17:59:39.555Z
+COMMAND: cd /d/dev_projects/buffer-zone; python - <<'EOF'
+    p='android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt'
+    s=open(p,encoding='utf-8').read()
+    def rep(a,b):
+        global s
+        assert s.count(a)==1,a
+        s=s.replace(a,b)
+    rep('import kotlinx.coroutines.launch\n','import kotlinx.coroutines.launch\nimport kotlinx.coroutines.suspendCancellableCoroutine\n')
+    rep('import okhttp3.OkHttpClient\n','import okhttp3.Call\nimport okhttp3.Callback\nimport okhttp3.OkHttpClient\n')
+    rep('import org.json.JSONTokener\n','import org.json.JSONTokener\nimport java.io.IOException\n')
+    rep('import java.util.concurrent.TimeUnit\n','import java.util.concurrent.TimeUnit\nimport kotlin.coroutines.resume\n')
+    rep('''    /** Tries all connections in parallel;''','''    /** GET <uri>/identity; true on a 2xx answer. Cancelling the coroutine cancels the HTTP call, so a dead address does not hold up the caller. */
+        private suspend fun identityOk(uri: String, token: String?): Boolean {
+            val b = Request.Builder().url("$uri/identity").get()
+            clientHeaders().forEach { (k, v) -> b.header(k, v) }
+            if (token != null) b.header("X-Plex-Token", token)
+            val call = runCatching { http.newBuilder().callTimeout(6000, TimeUnit.MILLISECONDS).build().newCall(b.build()) }.getOrNull() ?: return false
+            return suspendCancellableCoroutine { cont ->
+                cont.invokeOnCancellation { call.cancel() }
+                call.enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) { if (cont.isActive) cont.resume(false) }
+                    override fun onResponse(call: Call, response: okhttp3.Response) {
+                        val ok = response.use { it.isSuccessful }
+                        if (cont.isActive) cont.resume(ok)
+                    }
+                })
+            }
+        }
+    
+        /** Tries all connections in parallel;''')
+    rep('launch { if (request("${c.uri}/identity", token = token, timeoutMs = 6000).ok) result.complete(c) }','launch { if (identityOk(c.uri, token)) result.complete(c) }')
+    open(p,'w',encoding='utf-8',newline='').write(s)
+    EOF
+    git diff android/
+EXIT: 0
+OUTPUT:
+    @@ -242,14 +265,17 @@ class Plex(val clientId: String) {
+             suspend fun first(list: List<Connection>): Connection? = coroutineScope {
+                 if (list.isEmpty()) return@coroutineScope null
+                 val result = CompletableDeferred<Connection?>()
+    -            val jobs = list.map { c -> launch { if (request("${c.uri}/identity", token = token, timeoutMs = 6000).ok) result.complete(c) } }
+    +            val jobs = list.map { c -> launch { if (identityOk(c.uri, token)) result.complete(c) } }
+                 launch { jobs.joinAll(); result.complete(null) }
+                 val r = withTimeoutOrNull(7000) { result.await() }
+                 coroutineContext.cancelChildren()
+                 r
+             }
+             val conns = res.connections
+    -        return first(conns.filter { !it.relay }) ?: first(conns.filter { it.relay })
+    +        android.util.Log.i("BufferZone", "TMP probe begin")
+    +        val tmpR = first(conns.filter { !it.relay }) ?: first(conns.filter { it.relay })
+    +        android.util.Log.i("BufferZone", "TMP probe end ${tmpR?.uri}")
+    +        return tmpR
+         }
+     
+         suspend fun connect(res: Resource): Server {
+
+### EVIDENCE: WORK 2026-11-24T17:59:46.512Z
+COMMAND: cd /d/dev_projects/buffer-zone; python - <<'EOF'
+    p='android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt'
+    s=open(p,encoding='utf-8').read()
+    a='''        val b = Request.Builder().url("$uri/identity").get()
+            clientHeaders().forEach { (k, v) -> b.header(k, v) }
+            if (token != null) b.header("X-Plex-Token", token)
+            val call = runCatching { http.newBuilder().callTimeout(6000, TimeUnit.MILLISECONDS).build().newCall(b.build()) }.getOrNull() ?: return false
+    '''
+    b='''        val call = runCatching {
+                val b = Request.Builder().url("$uri/identity").get()
+                clientHeaders().forEach { (k, v) -> b.header(k, v) }
+                if (token != null) b.header("X-Plex-Token", token)
+                http.newBuilder().callTimeout(6000, TimeUnit.MILLISECONDS).build().newCall(b.build())
+            }.getOrNull() ?: return false
+    '''
+    assert s.count(a)==1
+    open(p,'w',encoding='utf-8',newline='').write(s.replace(a,b))
+    EOF
+    cd android && ./gradlew.bat assembleDebug -q 2>&1 | tail -15; echo EXIT ${PIPESTATUS[0]}
+EXIT: 0
+OUTPUT:
+    EXIT 0
+
+### EVIDENCE: WORK 2026-11-24T18:00:15.421Z
+COMMAND: cd /d/dev_projects/buffer-zone; ls -la android/app/build/outputs/apk/debug/app-debug.apk; adb -s 192.168.50.60:5555 install -r android/app/build/outputs/apk/debug/app-debug.apk && bash "$CLAUDE_JOB_DIR/tmp/measure.sh" 2>&1 | grep -v "arg\|data="
+EXIT: 0
+OUTPUT:
+    -rw-r--r-- 1 dani 197121 21593912 Nov 24 19:00 android/app/build/outputs/apk/debug/app-debug.apk
+    Performing Streamed Install
+    Success
+    --- start 1
+    11-24 19:00:23.456 I/BufferZone( 7392): start
+    11-24 19:00:26.885 I/BufferZone( 7392): TMP probe begin
+    11-24 19:00:27.042 I/BufferZone( 7392): TMP probe end http://plex.v12.appboxmanager.xyz:80
+    --- start 2
+    11-24 19:00:30.614 I/BufferZone( 7495): start
+    11-24 19:00:33.537 I/BufferZone( 7495): TMP probe begin
+    11-24 19:00:33.705 I/BufferZone( 7495): TMP probe end http://plex.v12.appboxmanager.xyz:80
+    --- start 3
+    11-24 19:00:37.467 I/BufferZone( 7598): start
+    11-24 19:00:40.091 I/BufferZone( 7598): TMP probe begin
+    11-24 19:00:40.258 I/BufferZone( 7598): TMP probe end http://plex.v12.appboxmanager.xyz:80
+
+### EVIDENCE: WORK 2026-11-24T18:00:44.447Z
+COMMAND: cd /d/dev_projects/buffer-zone; sleep 8; adb -s 192.168.50.60:5555 logcat -d -v time -s BufferZone | tail -5; adb -s 192.168.50.60:5555 exec-out screencap -p > "$CLAUDE_JOB_DIR/tmp/home.png"; ls -la "$CLAUDE_JOB_DIR/tmp/home.png"
+EXIT: 0
+OUTPUT:
+    --------- beginning of system
+    --------- beginning of main
+    11-24 19:00:37.467 I/BufferZone( 7598): start
+    11-24 19:00:40.091 I/BufferZone( 7598): TMP probe begin
+    11-24 19:00:40.258 I/BufferZone( 7598): TMP probe end http://plex.v12.appboxmanager.xyz:80
+    -rw-r--r-- 1 dani 197121 244931 Nov 24 19:00 C:\Users\dani\.claude\jobs\d2d29cc2/tmp/home.png
+
+### EVIDENCE: WORK 2026-11-24T18:00:58.924Z
+COMMAND: cd /d/dev_projects/buffer-zone; python - <<'EOF'
+    p='android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt'
+    s=open(p,encoding='utf-8').read()
+    a='''        android.util.Log.i("BufferZone", "TMP probe begin")
+            val tmpR = first(conns.filter { !it.relay }) ?: first(conns.filter { it.relay })
+            android.util.Log.i("BufferZone", "TMP probe end ${tmpR?.uri}")
+            return tmpR'''
+    b='''        return first(conns.filter { !it.relay }) ?: first(conns.filter { it.relay })'''
+    assert s.count(a)==1
+    open(p,'w',encoding='utf-8',newline='').write(s.replace(a,b))
+    EOF
+    grep -n TMP android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt; which gradle || echo "no gradle on PATH"
+EXIT: 0
+OUTPUT:
+    which: no gradle in (/c/Users/dani/bin:/mingw64/bin:/usr/local/bin:/usr/bin:/bin:/mingw64/bin:/usr/bin:/c/Users/dani/bin:/c/Program Files/Microsoft/jdk-17.0.20.101-hotspot/bin:/c/Program Files/Oculus/…
+    no gradle on PATH
+
+### EVIDENCE: WORK 2026-11-24T18:01:04.476Z
+COMMAND: cd /d/dev_projects/buffer-zone; gradle -p android test; echo EXIT $?; android/gradlew.bat -p android test 2>&1 | tail -5; echo EXIT ${PIPESTATUS[0]}; cd android && ./gradlew.bat assembleDebug 2>&1 | tail -3; echo EXIT ${PIPESTATUS[0]}
+EXIT: 0
+OUTPUT:
+    /usr/bin/bash: line 1: gradle: command not found
+    EXIT 127
+    > Task :app:test
+    
+    BUILD SUCCESSFUL in 25s
+    25 actionable tasks: 5 executed, 20 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+    EXIT 0
+    BUILD SUCCESSFUL in 2s
+    37 actionable tasks: 3 executed, 34 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+    EXIT 0
+
+### EVIDENCE: WORK 2026-11-24T18:01:35.023Z
+COMMAND: cd /d/dev_projects/buffer-zone; adb -s 192.168.50.60:5555 install -r android/app/build/outputs/apk/debug/app-debug.apk; git diff --stat -- android; git status --short
+EXIT: 0
+OUTPUT:
+    Performing Streamed Install
+    Success
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt', LF will be replaced by CRLF the next time Git touches it
+     .../src/main/java/com/dkrb56/bufferzone/Plex.kt    | 27 +++++++++++++++++++++-
+     1 file changed, 26 insertions(+), 1 deletion(-)
+     M .dispatch/android-tv-start-waits-6-seconds-for-a.models
+     M .dispatch/android-tv-start-waits-6-seconds-for-a.session
+     M .dispatch/android-tv-start-waits-6-seconds-for-a.state
+     M .dispatch/briefs/android-tv-start-waits-6-seconds-for-a.md
+     M .dispatch/logs/android-tv-start-waits-6-seconds-for-a.md
+     M .dispatch/plans/android-tv-start-waits-6-seconds-for-a.md
+     M android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt
+    ?? .dispatch/android-tv-start-waits-6-seconds-for-a.checks
+
+### EVIDENCE: WORK 2026-11-24T18:01:43.064Z
+COMMAND: cd /d/dev_projects/buffer-zone; git add android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt && git commit -q -m "android-tv-start-waits-6-seconds-for-a: cancel slow server probes on Android
+    
+    probe() now checks each address with a cancellable OkHttp call, so the
+    first answer ends the round at once instead of waiting up to 6 s for a
+    dead address." -- android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt && git log --oneline -1
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt', LF will be replaced by CRLF the next time Git touches it
+    ded84a5 android-tv-start-waits-6-seconds-for-a: cancel slow server probes on Android
+
+### 2. WORK — ok
+The Android TV app now continues right after the first server address answers. The server check went from about 6 s to about 0.17 s on the Philips TV. Commit `ded84a5`.
+Files: android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt
 Blockers: none
 
 ## What changed
-none
+The Android TV app now continues right after the first server address answers. The server check went from about 6 s to about 0.17 s on the Philips TV. Commit `ded84a5`.
 
 ## Why
-none
+The app checked all addresses at the same time, but a stopped check did not stop its network call. The app then waited for the dead address to reach its 6 s time limit. Now each address check uses a network call that stops when the check stops.
 
 ## Files
-none
+- `android/app/src/main/java/com/dkrb56/bufferzone/Plex.kt`: new private function `identityOk` (async OkHttp `enqueue` inside `suspendCancellableCoroutine`, `call.cancel()` on cancel, same headers, same 6000 ms `callTimeout`). `probe` uses it instead of `request(...)`. The 7000 ms round limit, the order direct-then-relay and `request()` did not change.
 
 ## Verification
-none
+Measured on the TV 192.168.50.60:5555 with temporary log lines "TMP probe begin" / "TMP probe end" in `probe`. A script did `am force-stop`, `logcat -c`, a `monkey` launch, and read `logcat -d -v time -s BufferZone`. Each start was a cold start.
+
+| Start | Before fix (begin → end) | After fix (begin → end) |
+|---|---|---|
+| 1 | 18:58:58.772 → 18:59:04.801 = 6.03 s | 19:00:26.885 → 19:00:27.042 = 0.157 s |
+| 2 | 18:59:11.760 → 18:59:17.780 = 6.02 s | 19:00:33.537 → 19:00:33.705 = 0.168 s |
+| 3 | 18:59:24.470 → 18:59:30.485 = 6.02 s | 19:00:40.091 → 19:00:40.258 = 0.167 s |
+
+- The winning address was `http://plex.v12.appboxmanager.xyz:80` before and after the fix (a direct address, not the relay).
+- A screenshot after start 3 showed the home screen with Continue watching content.
+- I removed the temporary log lines. `grep TMP` on `Plex.kt` finds nothing. `git diff --stat` before the commit showed only `Plex.kt`.
+- `gradle -p android test` (the check as written): exit 127, `gradle: command not found`. Gradle is not on PATH on this machine. The check was not ticked in Checks chosen.
+- `android/gradlew.bat -p android test`: `BUILD SUCCESSFUL`, exit 0.
+- `./gradlew.bat assembleDebug` in `android/`: `BUILD SUCCESSFUL`, exit 0. I installed this clean build on the TV.
 
 ## Follow-ups
-none
+- Windows and webOS already continue at the first answer (`Promise.any` in `renderer/js/plex.js`). No change there, as the plan says.
+- Version bump, `npm run build:all`, push and GitHub release are for the user.
+- The check command `gradle -p android test` in `.dispatch/checks.txt` fails on this machine because `gradle` is not on PATH. `android/gradlew.bat -p android test` works.
+- The rest of the 13 s start (about 2–3.5 s from "start" to "probe begin", and the time after the probe) was not measured in this run.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
-| claude-opus-5-5 | 20 | 33065 | 235361 | 7584 | 276030 |
+| claude-opus-5-5 | 48 | 85021 | 615310 | 14203 | 714582 |

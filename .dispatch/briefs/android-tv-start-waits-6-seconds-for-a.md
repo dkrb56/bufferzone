@@ -24,3 +24,7 @@ CLAUDE.md and the project rules hold.
 ## The command that proves the work
 Done when: On the TV (adb 192.168.50.60:5555), the step from the server list to the end of the server check takes less than 1 second, not 6. Measure it on a cold start with log lines or logcat timestamps.
 The plan run names the commands that show it under Acceptance.
+
+## Step lines for Dispatch
+
+Dispatch shows the progress of this run to the user from these lines. Before you start each numbered item of the section Steps of the plan, write one line of text in your message, on its own line: `Step <number>: <what the step does, in at most 8 plain words>`. Write it once per step, as normal text and not through a tool. Use this form for nothing else.
