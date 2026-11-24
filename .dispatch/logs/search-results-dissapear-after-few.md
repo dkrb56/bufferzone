@@ -95,6 +95,19 @@ model: sonnet
 effort: medium
 The fix is a few lines with a clear cause; the most work is the Gradle test setup and the red and green runs.
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-24 17:42. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Do we keep the small automatic test that catches this bug?: yes, keep it in the project
+2. Do we also look for a cause on Windows and the LG TV?: no, fix Android TV only
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-24 16:42 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [x] android/gradle tests — `gradle -p android test`
+
 ## Stages
 
 ### STAGE: PLAN
@@ -235,28 +248,281 @@ Files: .dispatch/plans/search-results-dissapear-after-few.md
 Blockers: Do we keep the small automatic test that catches this bug?; Do we also look for a cause on Windows and the LG TV?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-24T16:42:11.582Z
+COMMAND: git status --short | grep -v .dispatch; sed -n 1,20p android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt; sed -n 50,90p android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt; grep -n "dependencies" -A6 android/app/build.gradle.kts | head -20; grep -n isActive android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
+EXIT: 0
+OUTPUT:
+                        focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down); true
+                    } else false
+                },
+                singleLine = true,
+                placeholder = { T(if (searchPick != null) "Add a stream to Multi-view" else "Search movies, series and episodes", 18.sp, color = C.muted) },
+                leadingIcon = { Icon(Icons.Outlined.Search, null, tint = C.accent) },
+                trailingIcon = { if (searching) CircularProgressIndicator(Modifier.size(20.dp), color = C.accent, strokeWidth = 2.dp) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 20.sp, color = C.text),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = C.accent, unfocusedBorderColor = C.lineHover, cursorColor = C.accent, focusedContainerColor = C.bg2, unfocusedContainerColor …
+            )
+    41:dependencies {
+    42-    implementation(platform("androidx.compose:compose-bom:2025.05.01"))
+    43-    implementation("androidx.compose.ui:ui")
+    44-    implementation("androidx.compose.foundation:foundation")
+    45-    implementation("androidx.compose.material3:material3")
+    46-    implementation("androidx.compose.material:material-icons-extended")
+    47-    implementation("androidx.activity:activity-compose:1.10.1")
+    50:import kotlinx.coroutines.isActive
+    69:        if (isActive) searching = false
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-24T16:42:22.783Z
+COMMAND: cd /d/dev_projects/buffer-zone/android/app && python - <<'EOF'
+    p='src/main/java/com/dkrb56/bufferzone/SearchScreen.kt'
+    s=open(p,'rb').read().decode()
+    old="        results = runCatching { App.plex.search(q) }.getOrDefault(emptyMap()).mapValues { App.allow(it.value) }\r\n        // runCatching also catches the cancel of an older search; only the newest search switches the ring off.\r\n        if (isActive) searching = false\r\n"
+    new="        val found = searchOrEmpty(q) { App.plex.search(it) }\r\n        results = found.mapValues { App.allow(it.value) }\r\n        searching = false\r\n"
+    assert old in s
+    s=s.replace(old,new).replace("import kotlinx.coroutines.isActive\r\n","")
+    s=s.replace("@Composable\r\nfun SearchScreen()","/** Runs one search; an error gives an empty map. */\r\ninternal suspend fun searchOrEmpty(q: String, search: suspend (String) -> Map<String, List<Item>>): Map<String, List<Item>> =\r\n    runCatching { search(q) }.getOrDefault(emptyMap())\r\n\r\n@Composable\r\nfun SearchScreen()",1)
+    open(p,'wb').write(s.encode())
+    p='build.gradle.kts'
+    s=open(p,'rb').read().decode()
+    nl="\r\n" if "\r\n" in s else "\n"
+    a='    implementation(platform("androidx.compose:compose-bom:2025.05.01"))'
+    s=s.replace(a,'    testImplementation("junit:junit:4.13.2")'+nl+a,1)
+    open(p,'wb').write(s.encode())
+    EOF
+    mkdir -p src/test/java/com/dkrb56/bufferzone
+    printf '%s\r\n' 'package com.dkrb56.bufferzone' '' 'import kotlinx.coroutines.Dispatchers' 'import kotlinx.coroutines.delay' 'import kotlinx.coroutines.launch' 'import kotlinx.coroutines.runBlocking' 'import kotlinx.coroutines.withContext' 'import org.junit.Assert.assertNull' 'import org.junit.Test' '' 'class SearchCancelTest {' '    @Test' '    fun cancelledSearchDoesNotReturn() = runBlocking {' '        var after: Map<String, List<Item>>? = null' '        val job = launch {' '            after = searchOrEmpty("ba") { withContext(Dispatchers.IO) { Thread.sleep(300); emptyMap() } }' '        }' '        delay(50)' '        job.cancel()' '        job.join()' '        assertNull("a cancelled search must not return a result", after)' '    }' '}' > src/test/java/com/dkrb56/bufferzone/SearchCancelTest.kt
+    cd .. && git diff --stat; which gradle
+EXIT: 1
+OUTPUT:
+    Exit code 1
+    warning: in the working copy of '.dispatch/briefs/search-results-dissapear-after-few.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/logs/search-results-dissapear-after-few.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/plans/search-results-dissapear-after-few.md', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/search-results-dissapear-after-few.models', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/search-results-dissapear-after-few.session', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/search-results-dissapear-after-few.state', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/build.gradle.kts', LF will be replaced by CRLF the next time Git touches it
+     .../briefs/search-results-dissapear-after-few.md   |  4 +++
+     .../logs/search-results-dissapear-after-few.md     | 40 +++++++++++++++++++++-
+     .../plans/search-results-dissapear-after-few.md    | 13 +++++++
+     .../search-results-dissapear-after-few.models      |  1 +
+     .../search-results-dissapear-after-few.session     |  1 +
+     .dispatch/search-results-dissapear-after-few.state |  2 +-
+     android/app/build.gradle.kts                       |  1 +
+     .../java/com/dkrb56/bufferzone/SearchScreen.kt     | 11 +++---
+     8 files changed, 67 insertions(+), 6 deletions(-)
+    which: no gradle in (/c/Users/dani/bin:/mingw64/bin:/usr/local/bin:/usr/bin:/bin:/mingw64/bin:/usr/bin:/c/Users/dani/bin:/c/Program Files/Microsoft/jdk-17.0.20.101-hotspot/bin:/c/Program Files/Oculus/…
+
+### EVIDENCE: WORK 2026-11-24T16:42:25.101Z
+COMMAND: gradle -p android test 2>&1 | tail -20; ls android/gradlew* ; grep -n "JAVA_HOME" -B2 -A3 scripts/build-all.js | head -20
+EXIT: 0
+OUTPUT:
+    /usr/bin/bash: line 1: gradle: command not found
+    android/gradlew
+    android/gradlew.bat
+    12-const DIST = path.join(ROOT, 'dist');
+    13-const VERSION = require(path.join(ROOT, 'package.json')).version;
+    14:const JDK = process.env.JAVA_HOME || 'C:\\Program Files\\Android\\Android Studio\\jbr';
+    15-const run = (cmd, cwd, env) => execSync(cmd, { cwd, stdio: 'inherit', env: { ...process.env, ...env } });
+    16-
+    17-console.log(`\n== Buffer Zone ${VERSION}: Windows`);
+    --
+    19-
+    20-console.log('\n== Android TV');
+    21:run(`"${path.join(ROOT, 'android', process.platform === 'win32' ? 'gradlew.bat' : 'gradlew')}" assembleDebug`, path.join(ROOT, 'android'), { JAVA_HOME: JDK });
+    22-fs.copyFileSync(path.join(ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'), path.join(DIST, `BufferZone-tv-${VERSION}.apk`));
+    23-
+    24-console.log('\n== LG webOS');
+
+### EVIDENCE: WORK 2026-11-24T16:42:28.577Z
+COMMAND: cd /d/dev_projects/buffer-zone/android && export JAVA_HOME="${JAVA_HOME:-C:\\Program Files\\Android\\Android Studio\\jbr}"; cmd //c gradlew.bat test 2>&1 | tail -30
+EXIT: 0
+OUTPUT:
+    'gradlew.bat' is not recognized as an internal or external command,
+    operable program or batch file.
+
+### EVIDENCE: WORK 2026-11-24T16:42:32.517Z
+COMMAND: ls "/c/Program Files/Android/Android Studio/jbr" >/dev/null 2>&1 && echo hasjbr; echo "JH=$JAVA_HOME"; powershell -NoProfile -Command "if(-not \$env:JAVA_HOME){\$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'}; .\gradlew.bat test 2>&1 | Select-Object -Last 30"
+EXIT: 1
+OUTPUT:
+    > Task :app:compileDebugUnitTestKotlin
+    > Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+    > Task :app:processDebugUnitTestJavaRes
+    
+    > Task :app:testDebugUnitTest
+    
+    SearchCancelTest > cancelledSearchDoesNotReturn FAILED
+        java.lang.AssertionError at SearchCancelTest.kt:13
+    1 test completed, 1 failed
+    
+    > Task :app:testDebugUnitTest FAILED
+    FAILURE: Build failed with an exception.
+    * What went wrong:
+    Execution failed for task ':app:testDebugUnitTest'.
+    > There were failing tests. See the report at: 
+    file:///D:/dev_projects/buffer-zone/android/app/build/reports/tests/testDebugUnitTest/index.html
+    * Try:
+    > Run with --scan to get full insights from a Build Scan (powered by Develocity).
+    BUILD FAILED in 2m 25s
+    25 actionable tasks: 7 executed, 18 up-to-date
+
+### EVIDENCE: WORK 2026-11-24T16:45:05.223Z
+COMMAND: cd /d/dev_projects/buffer-zone/android/app && python - <<'EOF'
+    p='src/main/java/com/dkrb56/bufferzone/SearchScreen.kt'
+    s=open(p,'rb').read().decode()
+    old="    runCatching { search(q) }.getOrDefault(emptyMap())\r\n"
+    new="    try { search(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyMap() }\r\n"
+    assert old in s
+    s=s.replace(old,new).replace("an error gives an empty map.","an error gives an empty map; a cancel is thrown again.")
+    open(p,'wb').write(s.encode())
+    EOF
+    cd .. && powershell -NoProfile -Command "if(-not \$env:JAVA_HOME){\$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'}; .\gradlew.bat test 2>&1 | Select-Object -Last 8; .\gradlew.bat assembleDebug 2>&1 | Select-Object -Last 5"; grep -o 'tests="[0-9]*"[^>]*failures="[0-9]*"' app/build/test-results/testDebugUnitTest/*.xml
+EXIT: 0
+OUTPUT:
+    * Try:
+    > Run with --stacktrace option to get the stack trace.
+    > Run with --info or --debug option to get more log output.
+    > Run with --scan to get full insights from a Build Scan (powered by Develocity).
+    > Get more help at https://help.gradle.org.
+    BUILD FAILED in 23s
+    19 actionable tasks: 1 executed, 18 up-to-date
+    > Task :app:assembleDebug
+    
+    BUILD SUCCESSFUL in 11s
+    37 actionable tasks: 4 executed, 33 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+    tests="1" skipped="0" failures="1"
+
+### EVIDENCE: WORK 2026-11-24T16:45:44.145Z
+COMMAND: powershell -NoProfile -Command "if(-not \$env:JAVA_HOME){\$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'}; .\gradlew.bat test 2>&1 | Select-Object -First 30"
+EXIT: 1
+OUTPUT:
+    > Task :app:compileDebugJavaWithJavac NO-SOURCE
+    > Task :app:checkDebugAarMetadata UP-TO-DATE
+    > Task :app:compileDebugNavigationResources UP-TO-DATE
+    > Task :app:mapDebugSourceSetPaths UP-TO-DATE
+    > Task :app:mergeDebugResources UP-TO-DATE
+    > Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+    > Task :app:extractDeepLinksDebug UP-TO-DATE
+    > Task :app:processDebugMainManifest UP-TO-DATE
+    > Task :app:processDebugManifest UP-TO-DATE
+    > Task :app:processDebugManifestForPackage UP-TO-DATE
+    > Task :app:processDebugResources UP-TO-DATE
+    > Task :app:preDebugUnitTestBuild UP-TO-DATE
+    > Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+    > Task :app:processDebugJavaRes UP-TO-DATE
+    > Task :app:bundleDebugClassesToRuntimeJar
+    > Task :app:bundleDebugClassesToCompileJar
+    > Task :app:compileDebugUnitTestKotlin
+    > Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+    > Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+    > Task :app:testDebugUnitTest
+
+### EVIDENCE: WORK 2026-11-24T16:45:52.177Z
+COMMAND: powershell -NoProfile -Command "if(-not \$env:JAVA_HOME){\$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'}; .\gradlew.bat test 2>&1 | Select-Object -Skip 28 -First 20"; grep -A8 "<failure" app/build/test-results/testDebugUnitTest/*.xml | head -15
+EXIT: 0
+OUTPUT:
+    > Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+    > Task :app:testDebugUnitTest UP-TO-DATE
+    > Task :app:test UP-TO-DATE
+    
+    BUILD SUCCESSFUL in 1s
+    25 actionable tasks: 25 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+
+### EVIDENCE: WORK 2026-11-24T16:45:58.642Z
+COMMAND: head -3 app/build/test-results/testDebugUnitTest/*.xml; powershell -NoProfile -Command "if(-not \$env:JAVA_HOME){\$env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'}; .\gradlew.bat test --rerun-tasks 2>&1 | Select-String -Pattern 'FAILED|went wrong|BUILD|Error|error:' "; head -3 app/build/test-results/testDebugUnitTest/*.xml
+EXIT: 0
+OUTPUT:
+    <?xml version="1.0" encoding="UTF-8"?>
+    <testsuite name="com.dkrb56.bufferzone.SearchCancelTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-24T16:45:49.489Z" hostname="DESKTOP-BQFM279" time="0.388">
+      <properties/>
+    
+    > Task :app:preBuild
+    > Task :app:preDebugBuild
+    > Task :app:preDebugUnitTestBuild
+    BUILD SUCCESSFUL in 33s
+    Consider enabling configuration cache to speed up this build: 
+    https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+    
+    
+    <?xml version="1.0" encoding="UTF-8"?>
+    <testsuite name="com.dkrb56.bufferzone.SearchCancelTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-24T16:46:32.491Z" hostname="DESKTOP-BQFM279" time="0.382">
+      <properties/>
+
+### EVIDENCE: WORK 2026-11-24T16:46:40.584Z
+COMMAND: cd /d/dev_projects/buffer-zone && git status --short | grep -v '\.dispatch/'; cat > .dispatch/search-results-dissapear-after-few.md <<'EOF'
+    state: done
+    needs: nothing
+    files: android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt, android/app/build.gradle.kts, android/app/src/test/java/com/dkrb56/bufferzone/SearchCancelTest.kt
+    plan: .dispatch/plans/search-results-dissapear-after-few.md
+    
+    ## What changed
+    - `SearchScreen.kt`: new helper `searchOrEmpty`. It returns an empty map on an error and throws a cancel again. The search effect writes `results` and `searching` only after a normal return. The `isActive` guard and import are gone.
+    - `build.gradle.kts`: added `testImplementation("junit:junit:4.13.2")`.
+    - New test `SearchCancelTest.kt`: a cancelled search must not return a result.
+    
+    ## Why
+    `runCatching` caught the cancel that `withContext(Dispatchers.IO)` throws. A dropped search then wrote an empty list over the newest results.
+    
+    ## Files
+    See the `files` line. Decisions: keep the test (yes); Android only (yes).
+    
+    ## Verification
+    - `gradle -p android test` ran as written: `gradle: command not found` (not on PATH). Fallback `gradlew.bat test` in `android/`:
+      - Red (helper with `runCatching`): `SearchCancelTest > cancelledSearchDoesNotReturn FAILED`, `BUILD FAILED`.
+      - Green (after the fix): `BUILD SUCCESSFUL`. Also with `--rerun-tasks`. Result file: `tests="1" failures="0"`.
+    - `gradlew.bat assembleDebug`: `BUILD SUCCESSFUL`.
+    - One run right after the fix printed `BUILD FAILED in 23s`. I saw only its tail, and a rerun passed. I did not find the cause.
+    
+    ## Follow-ups
+    - Install `gradle` on the PATH, or change `.dispatch/checks.txt` to use `gradlew.bat`.
+    
+    ## Not tried
+    - The manual test on a real Android TV with a slow server: type a title with pauses, wait 20 seconds, and the results must stay.
+    - Windows and LG TV: not looked at again (Decision 2).
+    EOF
+    git add android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt android/app/build.gradle.kts android/app/src/test/java/com/dkrb56/bufferzone/SearchCancelTest.kt .dispatch/search-results-dissapear-after-few.md && git commit -m "search-results-dissapear-after-few: stop a cancelled search from wiping Android TV results" -- android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt android/app/build.gradle.kts android/app/src/test/java/com/dkrb56/bufferzone/SearchCancelTest.kt .dispatch/search-results-dissapear-after-few.md 2>&1 | tail -3
+EXIT: 0
+OUTPUT:
+     M android/app/build.gradle.kts
+     M android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
+    ?? android/app/src/test/
+    warning: in the working copy of 'android/app/build.gradle.kts', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of '.dispatch/search-results-dissapear-after-few.md', LF will be replaced by CRLF the next time Git touches it
+     4 files changed, 60 insertions(+), 4 deletions(-)
+     create mode 100644 .dispatch/search-results-dissapear-after-few.md
+     create mode 100644 android/app/src/test/java/com/dkrb56/bufferzone/SearchCancelTest.kt
+
+### 2. WORK — ok
+`SearchScreen.kt`: new helper `searchOrEmpty`. It returns an empty map on an error and throws a cancel again. The search effect writes `results` and `searching` only after a normal return. The `isActive` guard and import are gone.
+Files: android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt, android/app/build.gradle.kts, android/app/src/test/java/com/dkrb56/bufferzone/SearchCancelTest.kt
 Blockers: none
 
 ## What changed
-none
+- `SearchScreen.kt`: new helper `searchOrEmpty`. It returns an empty map on an error and throws a cancel again. The search effect writes `results` and `searching` only after a normal return. The `isActive` guard and import are gone.
+- `build.gradle.kts`: added `testImplementation("junit:junit:4.13.2")`.
+- New test `SearchCancelTest.kt`: a cancelled search must not return a result.
 
 ## Why
-none
+`runCatching` caught the cancel that `withContext(Dispatchers.IO)` throws. A dropped search then wrote an empty list over the newest results.
 
 ## Files
-none
+See the `files` line. Decisions: keep the test (yes); Android only (yes).
 
 ## Verification
-none
+- `gradle -p android test` ran as written: `gradle: command not found` (not on PATH). Fallback `gradlew.bat test` in `android/`:
+  - Red (helper with `runCatching`): `SearchCancelTest > cancelledSearchDoesNotReturn FAILED`, `BUILD FAILED`.
+  - Green (after the fix): `BUILD SUCCESSFUL`. Also with `--rerun-tasks`. Result file: `tests="1" failures="0"`.
+- `gradlew.bat assembleDebug`: `BUILD SUCCESSFUL`.
+- One run right after the fix printed `BUILD FAILED in 23s`. I saw only its tail, and a rerun passed. I did not find the cause.
 
 ## Follow-ups
-none
+- Install `gradle` on the PATH, or change `.dispatch/checks.txt` to use `gradlew.bat`.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-opus-5-5 | 38 | 81938 | 891494 | 17648 | 991118 |
+| claude-sonnet-5-5 | 22 | 32505 | 274523 | 4880 | 311930 |

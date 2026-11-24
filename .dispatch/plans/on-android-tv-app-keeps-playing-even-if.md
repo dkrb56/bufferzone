@@ -100,3 +100,16 @@ Cause, with evidence:
 model: sonnet
 effort: medium
 The change is small and the cause is clear; the run only needs care with the lifecycle events of Note 2.
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-24 17:42. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. When you come back to the app, what does the paused show do?: It waits, paused, with the controls open; you press Play
+2. Should the show also pause when another app starts to play sound?: Yes; a short sound only makes it quieter, then it plays on
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-24 16:42 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests

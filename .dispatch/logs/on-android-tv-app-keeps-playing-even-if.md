@@ -104,6 +104,19 @@ model: sonnet
 effort: medium
 The change is small and the cause is clear; the run only needs care with the lifecycle events of Note 2.
 
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-24 17:42. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. When you come back to the app, what does the paused show do?: It waits, paused, with the controls open; you press Play
+2. Should the show also pause when another app starts to play sound?: Yes; a short sound only makes it quieter, then it plays on
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-24 16:42 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [ ] android/gradle tests
+
 ## Stages
 
 ### STAGE: PLAN
@@ -144,28 +157,142 @@ Files: .dispatch/plans/on-android-tv-app-keeps-playing-even-if.md
 Blockers: When you come back to the app, what does the paused show do?; Should the show also pause when another app starts to play sound?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-24T16:42:34.263Z
+COMMAND: cd /d/dev_projects/buffer-zone; adb devices 2>&1 | head; grep -n "DisposableEffect\|^import" android/app/src/main/java/com/dkrb56/bufferzone/PlayerScreen.kt | head -80
+EXIT: 0
+OUTPUT:
+    62:import androidx.compose.ui.graphics.Color
+    63:import androidx.compose.ui.graphics.vector.ImageVector
+    64:import androidx.compose.ui.input.key.KeyEventType
+    65:import androidx.compose.ui.input.key.nativeKeyCode
+    66:import androidx.compose.ui.input.key.onKeyEvent
+    67:import androidx.compose.ui.input.key.onPreviewKeyEvent
+    68:import androidx.compose.ui.input.key.key
+    69:import androidx.compose.ui.input.key.type
+    70:import androidx.compose.ui.platform.LocalContext
+    71:import androidx.compose.ui.text.font.FontWeight
+    72:import androidx.compose.ui.unit.dp
+    73:import androidx.compose.ui.unit.sp
+    74:import androidx.compose.ui.viewinterop.AndroidView
+    75:import androidx.media3.common.util.UnstableApi
+    76:import androidx.media3.ui.AspectRatioFrameLayout
+    77:import androidx.media3.ui.CaptionStyleCompat
+    78:import androidx.media3.ui.PlayerView
+    79:import androidx.media3.ui.SubtitleView
+    80:import kotlinx.coroutines.delay
+    106:    DisposableEffect(Unit) { onDispose { pb.release() } }
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-24T16:42:34.866Z
+COMMAND: cd /d/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone; grep -n "DisposableEffect\|^import" MultiView.kt; grep -n "if (!tile)\|^import\|AudioAttr" Playback.kt
+EXIT: 0
+OUTPUT:
+    14:import androidx.media3.common.Player
+    15:import androidx.media3.common.TrackSelectionOverride
+    16:import androidx.media3.common.Tracks
+    17:import androidx.media3.common.util.UnstableApi
+    18:import androidx.media3.datasource.DefaultHttpDataSource
+    19:import androidx.media3.exoplayer.DefaultRenderersFactory
+    20:import androidx.media3.exoplayer.ExoPlayer
+    21:import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+    22:import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+    23:import kotlinx.coroutines.CoroutineScope
+    24:import kotlinx.coroutines.Dispatchers
+    25:import kotlinx.coroutines.Job
+    26:import kotlinx.coroutines.SupervisorJob
+    27:import kotlinx.coroutines.cancel
+    28:import kotlinx.coroutines.delay
+    29:import kotlinx.coroutines.isActive
+    30:import kotlinx.coroutines.launch
+    31:import java.util.UUID
+    106:        if (!tile) {
+    287:        if (!tile) App.show("This file cannot play directly. Switching to a converted stream.")
+
+### EVIDENCE: WORK 2026-11-24T16:42:55.154Z
+COMMAND: cd /d/dev_projects/buffer-zone/android && JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' ./gradlew.bat assembleDebug 2>&1 | tail -25; cd ..; grep -c "ON_STOP" android/app/src/main/java/com/dkrb56/bufferzone/PlayerScreen.kt android/app/src/main/java/com/dkrb56/bufferzone/MultiView.kt; grep -c "handleAudioFocus\|setAudioAttributes" android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt; git diff --stat HEAD -- renderer webos main.js preload.js package.json android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt
+EXIT: 0
+OUTPUT:
+    exception: fun JSONObject.dbl(k: String): Double? = if (has(k) && !isNull(k)) opt(k).let { (it as? Number)?.toDouble() ?: it.toString().toDoubleOrNull() } else null
+    exception:                                                                                                                ^^
+    
+    > Task :app:compileDebugJavaWithJavac NO-SOURCE
+    > Task :app:dexBuilderDebug
+    > Task :app:processDebugJavaRes UP-TO-DATE
+    > Task :app:mergeDebugJavaResource UP-TO-DATE
+    > Task :app:mergeDebugGlobalSynthetics
+    > Task :app:mergeProjectDexDebug
+    > Task :app:packageDebug
+    > Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+    > Task :app:assembleDebug
+    w: Detected multiple Kotlin daemon sessions at 
+    
+    BUILD SUCCESSFUL in 1m 51s
+    37 actionable tasks: 5 executed, 32 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+    android/app/src/main/java/com/dkrb56/bufferzone/PlayerScreen.kt:1
+    android/app/src/main/java/com/dkrb56/bufferzone/MultiView.kt:1
+    1
+
+### EVIDENCE: WORK 2026-11-24T16:44:50.054Z
+COMMAND: cd /d/dev_projects/buffer-zone; P=android/app/src/main/java/com/dkrb56/bufferzone; git add $P/PlayerScreen.kt $P/MultiView.kt $P/Playback.kt && git commit -m "on-android-tv-app-keeps-playing-even-if: pause playback when the app leaves the screen" -- $P/PlayerScreen.kt $P/MultiView.kt $P/Playback.kt | tail -3; git status --short | head -20
+EXIT: 0
+OUTPUT:
+     M .dispatch/briefs/on-android-tv-app-keeps-playing-even-if.md
+     M .dispatch/briefs/search-results-dissapear-after-few.md
+     M .dispatch/logs/on-android-tv-app-keeps-playing-even-if.md
+     M .dispatch/logs/search-results-dissapear-after-few.md
+     M .dispatch/on-android-tv-app-keeps-playing-even-if.models
+     M .dispatch/on-android-tv-app-keeps-playing-even-if.session
+     M .dispatch/on-android-tv-app-keeps-playing-even-if.state
+     M .dispatch/plans/on-android-tv-app-keeps-playing-even-if.md
+     M .dispatch/plans/search-results-dissapear-after-few.md
+     M .dispatch/search-results-dissapear-after-few.models
+     M .dispatch/search-results-dissapear-after-few.session
+     M .dispatch/search-results-dissapear-after-few.state
+     M .dispatch/tickets.jsonl
+     M android/app/build.gradle.kts
+     M android/app/src/main/java/com/dkrb56/bufferzone/SearchScreen.kt
+    ?? .dispatch/briefs/i-keep-seeing-loading-spinner-on-android.md
+    ?? .dispatch/i-keep-seeing-loading-spinner-on-android.models
+    ?? .dispatch/i-keep-seeing-loading-spinner-on-android.session
+    ?? .dispatch/i-keep-seeing-loading-spinner-on-android.state
+    ?? .dispatch/logs/i-keep-seeing-loading-spinner-on-android.md
+
+### 2. WORK — ok
+`PlayerScreen.kt`: a lifecycle observer pauses the player on `ON_STOP`. On the next `ON_START` it opens the controls (Decision 1 Default).
+Files: android/app/src/main/java/com/dkrb56/bufferzone/PlayerScreen.kt, android/app/src/main/java/com/dkrb56/bufferzone/MultiView.kt, android/app/src/main/java/com/dkrb56/bufferzone/Playback.kt
 Blockers: none
 
 ## What changed
-none
+- `PlayerScreen.kt`: a lifecycle observer pauses the player on `ON_STOP`. On the next `ON_START` it opens the controls (Decision 1 Default).
+- `MultiView.kt`: a lifecycle observer calls `pauseAll()` on `ON_STOP` and `resumeAll()` on the next `ON_START`.
+- `Playback.kt`: the main player (not tiles) sets audio attributes with audio focus on (Decision 2 Default).
+- Commit 56270f0 on `main`.
 
 ## Why
-none
+Home only stops the activity. The composables stay alive, so the player was never paused. ExoPlayer also did not handle audio focus.
 
 ## Files
-none
+- The three files above. Nothing else was changed or committed.
 
 ## Verification
-none
+- `cd android && JAVA_HOME='C:\Program Files\Android\Android Studio\jbr' ./gradlew.bat assembleDebug` ended with BUILD SUCCESSFUL.
+- `grep -c "ON_STOP"` printed 1 for `PlayerScreen.kt` and 1 for `MultiView.kt`.
+- `grep -c "handleAudioFocus\|setAudioAttributes"` on `Playback.kt` printed 1.
+- `git diff --stat HEAD` for renderer, webos, main.js, preload.js, package.json and MainActivity.kt printed nothing.
+- Check "android/gradle tests" was not chosen and was not run.
+- Not tried: `adb devices` lists the device 192.168.50.60:5555 as `unauthorized`. So I did not run the reproduction or the `dumpsys audio` proof, before or after the fix.
+- Not tried: the manual tests on a TV (Home, YouTube, Multi-view, voice key), a TV where Home shows only an overlay, and a pause of more than 4 minutes.
 
 ## Follow-ups
-none
+- Deviation: none. The observer sits after `var controls`, not right after the `pb.release()` line, because it sets `controls`.
+- Other uncommitted changes (`build.gradle.kts`, `SearchScreen.kt`, `.dispatch/` files) came from other tasks and stay as they were.
+- Release: no version bump, no build of all platforms, no push.
+- The background player still sends its ping (30 s) and timeline (10 s), so the server keeps the stream while the app waits.
+- LG TV was not checked.
+- The user must authorize the TV for adb and run the manual tests.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-opus-5-5 | 34 | 75136 | 830397 | 12884 | 918451 |
+| claude-sonnet-5-5 | 16 | 51109 | 179033 | 4925 | 235083 |

@@ -91,3 +91,16 @@ On Android TV, the results of the newest search stay on screen until the user ch
 model: sonnet
 effort: medium
 The fix is a few lines with a clear cause; the most work is the Gradle test setup and the red and green runs.
+
+## User decisions
+
+The user took these decisions in Dispatch on 2026-11-24 17:42. Each replaces the Default, HOLD and Other options of the decision with the same number.
+
+1. Do we keep the small automatic test that catches this bug?: yes, keep it in the project
+2. Do we also look for a cause on Windows and the LG TV?: no, fix Android TV only
+
+## Checks chosen
+
+The user chose these checks in Dispatch on 2026-11-24 16:42 UTC. The work run runs each checked one with the command as written here, and names that exact command in Verification.
+
+- [x] android/gradle tests — `gradle -p android test`
