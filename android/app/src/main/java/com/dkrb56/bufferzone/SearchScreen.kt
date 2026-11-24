@@ -47,10 +47,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 /** When set, a picked result goes here instead of opening it (Multi-view uses this to add a stream). */
 var searchPick: ((Item) -> Unit)? = null
+
+/** Runs one search; an error gives an empty map; a cancel is thrown again. */
+internal suspend fun searchOrEmpty(q: String, search: suspend (String) -> Map<String, List<Item>>): Map<String, List<Item>> =
+    try { search(q) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyMap() }
 
 @Composable
 fun SearchScreen() {
@@ -64,9 +67,9 @@ fun SearchScreen() {
         if (q.length < 2) { results = null; searching = false; return@LaunchedEffect }
         delay(300)
         searching = true
-        results = runCatching { App.plex.search(q) }.getOrDefault(emptyMap()).mapValues { App.allow(it.value) }
-        // runCatching also catches the cancel of an older search; only the newest search switches the ring off.
-        if (isActive) searching = false
+        val found = searchOrEmpty(q) { App.plex.search(it) }
+        results = found.mapValues { App.allow(it.value) }
+        searching = false
     }
     LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
 
