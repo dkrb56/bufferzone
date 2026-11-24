@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
         App.init(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent { BzTheme { Root() } }
-        if (savedInstanceState == null) App.start()
+        if (savedInstanceState == null || !App.started) App.start()
     }
 }
 

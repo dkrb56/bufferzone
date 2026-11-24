@@ -128,7 +128,12 @@ object App {
     }
 
     // ---------- start-up ----------
+    var started = false
+        private set
+
     fun start() {
+        started = true
+        log("start")
         // A short note when a new version exists; silence when the check fails.
         scope.launch {
             delay(5000)
