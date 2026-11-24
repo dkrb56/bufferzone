@@ -7,6 +7,7 @@ import androidx.annotation.OptIn
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C as MC
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -107,6 +108,10 @@ class Playback(private val ctx: Context, val tile: Boolean = false) {
             val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val sid = am.generateAudioSessionId()
             player.setAudioSessionId(sid)
+            player.setAudioAttributes(
+                AudioAttributes.Builder().setUsage(MC.USAGE_MEDIA).setContentType(MC.AUDIO_CONTENT_TYPE_MOVIE).build(),
+                true
+            )
             enhancer = runCatching { LoudnessEnhancer(sid) }.getOrNull()
         }
     }

@@ -68,6 +68,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -107,6 +110,21 @@ fun PlayerScreen(req: PlayRequest) {
     LaunchedEffect(current) { pb.play(current) }
 
     var controls by remember { mutableStateOf(true) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        var stopped = false
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_STOP) {
+                stopped = true
+                pb.player.pause()
+            } else if (e == Lifecycle.Event.ON_START && stopped) {
+                stopped = false
+                controls = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
     var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var pop by remember { mutableStateOf<String?>(null) }
     var nextCancelled by remember(current) { mutableStateOf(false) }

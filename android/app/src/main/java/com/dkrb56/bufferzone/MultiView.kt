@@ -41,6 +41,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,6 +98,21 @@ fun MultiViewScreen() {
     val ctx = LocalContext.current
     LaunchedEffect(Unit) { MultiView.bind(ctx); MultiView.resumeAll() }
     DisposableEffect(Unit) { onDispose { MultiView.pauseAll() } }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        var stopped = false
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_STOP) {
+                stopped = true
+                MultiView.pauseAll()
+            } else if (e == Lifecycle.Event.ON_START && stopped) {
+                stopped = false
+                MultiView.resumeAll()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
     var menuFor by remember { mutableStateOf<Int?>(null) }
     val layout = App.store.mvLayout
     val tiles = MultiView.tiles
