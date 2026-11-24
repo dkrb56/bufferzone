@@ -217,28 +217,140 @@ Files: .dispatch/plans/i-keep-seeing-loading-spinner-on-android.md
 Blockers: Should the app also show a message when start-up is slow, for example right after the TV wakes?
 
 ### STAGE: WORK
+### EVIDENCE: WORK 2026-11-24T16:47:01.922Z
+COMMAND: cd D:/dev_projects/buffer-zone/android/app/src/main/java/com/dkrb56/bufferzone; grep -n "App.start\|savedInstanceState" MainActivity.kt; grep -n "fun start\|object App\|fun log\|fun init" -A6 AppState.kt | head -60; adb devices 2>&1 | head
+EXIT: 0
+OUTPUT:
+    91-    }
+    92-
+    --
+    103:    fun log(msg: String) { android.util.Log.i("BufferZone", msg) }
+    104-    fun show(msg: String) { toast = msg; scope.launch { delay(3500); if (toast == msg) toast = null } }
+    105-
+    106-    fun open(i: Item) = when (i.type) {
+    107-        "movie" -> go(Screen.Movie(i.ratingKey))
+    108-        "show" -> go(Screen.Show(i.ratingKey))
+    109-        "season" -> go(Screen.Show(i.parentRatingKey ?: "", season = i.ratingKey))
+    --
+    131:    fun start() {
+    132-        // A short note when a new version exists; silence when the check fails.
+    133-        scope.launch {
+    134-            delay(5000)
+    135-            runCatching { checkUpdate() }.getOrNull()?.let { show("Buffer Zone $it is available. See Settings → Account.") }
+    136-        }
+    137-        scope.launch {
+    List of devices attached
+    192.168.50.60:5555	unauthorized
 
-### 2. WORK — nothing-to-do
-No report yet.
-Files: none
+### EVIDENCE: WORK 2026-11-24T16:47:11.983Z
+COMMAND: cd D:/dev_projects/buffer-zone && gradle -p android test 2>&1 | tail -15
+EXIT: 0
+OUTPUT:
+    /usr/bin/bash: line 1: gradle: command not found
+
+### EVIDENCE: WORK 2026-11-24T16:47:15.586Z
+COMMAND: cd D:/dev_projects/buffer-zone && powershell -Command "gradle -p android test 2>&1 | Select-Object -Last 15"; ls android | head -20
+EXIT: 0
+OUTPUT:
+    gradle : The term 'gradle' is not recognized as the name of a cmdlet, function, script file, or operable program. 
+    Check the spelling of the name, or if a path was included, verify that the path is correct and try again.
+    At line:1 char:1
+    + gradle -p android test 2>&1 | Select-Object -Last 15
+    + ~~~~~~
+        + CategoryInfo          : ObjectNotFound: (gradle:String) [], CommandNotFoundException
+        + FullyQualifiedErrorId : CommandNotFoundException
+     
+    app
+    build.gradle.kts
+    gradle
+    gradle.properties
+    gradlew
+    gradlew.bat
+    settings.gradle.kts
+
+### EVIDENCE: WORK 2026-11-24T16:47:19.248Z
+COMMAND: cd D:/dev_projects/buffer-zone/android && ./gradlew.bat test 2>&1 | tail -15
+EXIT: 0
+OUTPUT:
+    > Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+    > Task :app:compileDebugKotlin
+    > Task :app:compileDebugJavaWithJavac NO-SOURCE
+    > Task :app:processDebugJavaRes UP-TO-DATE
+    > Task :app:bundleDebugClassesToRuntimeJar
+    > Task :app:bundleDebugClassesToCompileJar
+    > Task :app:compileDebugUnitTestKotlin
+    > Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+    > Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+    > Task :app:testDebugUnitTest
+    > Task :app:test
+    
+    BUILD SUCCESSFUL in 26s
+    25 actionable tasks: 5 executed, 20 up-to-date
+    Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+
+### EVIDENCE: WORK 2026-11-24T16:47:53.020Z
+COMMAND: cd D:/dev_projects/buffer-zone && cat > .dispatch/i-keep-seeing-loading-spinner-on-android.md <<'EOF'
+    state: done
+    needs: nothing
+    files: android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt, android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt
+    plan: .dispatch/plans/i-keep-seeing-loading-spinner-on-android.md
+    
+    ## What changed
+    - `App` has a new flag `started`, set in `start()`. `start()` now logs `start`.
+    - `MainActivity.onCreate` calls `App.start()` when `savedInstanceState == null` or when `App.started` is false.
+    
+    ## Why
+    After Android kills the background process, the activity is restored with a saved state. `App` is new and shows `Screen.Loading`, but nothing called `start()`. The spinner never ended.
+    
+    ## Files
+    - MainActivity.kt
+    - AppState.kt
+    
+    ## Verification
+    - `gradle -p android test` as written: failed, `gradle` is not installed on this machine (command not found, in bash and PowerShell).
+    - I ran `./gradlew.bat test` in `android/` instead (deviation). It ended with `BUILD SUCCESSFUL`. The changed code compiles and the existing unit tests pass.
+    - `adb devices` showed only 192.168.50.60:5555, state `unauthorized`. It is probably the user's own TV. I did not use it.
+    
+    ## Follow-ups
+    - Nobody tried the device test (kill the process in the background, reopen, check the log and screenshot). No emulator was available. Someone must test it on an emulator or a test device.
+    - The check command `gradle -p android test` does not work here. Dispatch may count that check as not run.
+    EOF
+    git add android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt && git commit -q -m "i-keep-seeing-loading-spinner-on-android: start the app after Android restores a killed process" -- android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt && git log --oneline -1
+EXIT: 0
+OUTPUT:
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt', LF will be replaced by CRLF the next time Git touches it
+    warning: in the working copy of 'android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt', LF will be replaced by CRLF the next time Git touches it
+    c30b47e i-keep-seeing-loading-spinner-on-android: start the app after Android restores a killed process
+
+### 2. WORK — ok
+`App` has a new flag `started`, set in `start()`. `start()` now logs `start`.
+Files: android/app/src/main/java/com/dkrb56/bufferzone/MainActivity.kt, android/app/src/main/java/com/dkrb56/bufferzone/AppState.kt
 Blockers: none
 
 ## What changed
-none
+- `App` has a new flag `started`, set in `start()`. `start()` now logs `start`.
+- `MainActivity.onCreate` calls `App.start()` when `savedInstanceState == null` or when `App.started` is false.
 
 ## Why
-none
+After Android kills the background process, the activity is restored with a saved state. `App` is new and shows `Screen.Loading`, but nothing called `start()`. The spinner never ended.
 
 ## Files
-none
+- MainActivity.kt
+- AppState.kt
 
 ## Verification
-none
+- `gradle -p android test` as written: failed, `gradle` is not installed on this machine (command not found, in bash and PowerShell).
+- I ran `./gradlew.bat test` in `android/` instead (deviation). It ended with `BUILD SUCCESSFUL`. The changed code compiles and the existing unit tests pass.
+- `adb devices` showed only 192.168.50.60:5555, state `unauthorized`. It is probably the user's own TV. I did not use it.
 
 ## Follow-ups
-none
+- Nobody tried the device test (kill the process in the background, reopen, check the log and screenshot). No emulator was available. Someone must test it on an emulator or a test device.
+- The check command `gradle -p android test` does not work here. Dispatch may count that check as not run.
 
 ### Token usage
 | Model | Input | Cache write | Cache read | Output | Total |
 |---|---|---|---|---|---|
 | claude-opus-5-5 | 20 | 46749 | 298087 | 8962 | 353818 |
+| claude-sonnet-5-5 | 16 | 32490 | 148924 | 2659 | 184089 |

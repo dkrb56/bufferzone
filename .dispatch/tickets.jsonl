@@ -23,3 +23,4 @@
 {"op":"status","ref":"i-keep-seeing-loading-spinner-on-android","ts":"2026-11-24T16:43:12.226Z","status":"in_progress","order":null}
 {"op":"close","ref":"on-android-tv-app-keeps-playing-even-if","ts":"2026-11-24T16:45:14.514Z","resolution":"done","note":"done","order":null}
 {"op":"close","ref":"search-results-dissapear-after-few","ts":"2026-11-24T16:46:43.762Z","resolution":"done","note":"done","order":null}
+{"op":"close","ref":"i-keep-seeing-loading-spinner-on-android","ts":"2026-11-24T16:48:04.397Z","resolution":"done","note":"done","order":null}
