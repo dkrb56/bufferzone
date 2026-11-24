@@ -6,19 +6,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 
 // Plex API client: plex.tv sign-in, server discovery, the Plex Media Server API, Plex Home and the Discover watchlist.
 // Same requests as renderer/js/plex.js in the desktop app.
@@ -235,6 +240,26 @@ class Plex(val clientId: String) {
         return (list as? JSONArray)?.objects()?.map { Resource(it) }?.filter { (it.j.str("provides") ?: "").contains("server") } ?: emptyList()
     }
 
+    /** GET <uri>/identity; true on a 2xx answer. Cancelling the coroutine cancels the HTTP call, so a dead address does not hold up the caller. */
+    private suspend fun identityOk(uri: String, token: String?): Boolean {
+        val call = runCatching {
+            val b = Request.Builder().url("$uri/identity").get()
+            clientHeaders().forEach { (k, v) -> b.header(k, v) }
+            if (token != null) b.header("X-Plex-Token", token)
+            http.newBuilder().callTimeout(6000, TimeUnit.MILLISECONDS).build().newCall(b.build())
+        }.getOrNull() ?: return false
+        return suspendCancellableCoroutine { cont ->
+            cont.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) { if (cont.isActive) cont.resume(false) }
+                override fun onResponse(call: Call, response: okhttp3.Response) {
+                    val ok = response.use { it.isSuccessful }
+                    if (cont.isActive) cont.resume(ok)
+                }
+            })
+        }
+    }
+
     /** Tries all connections in parallel; a direct connection wins over the Plex relay. Null when the server is unreachable. */
     suspend fun probe(res: Resource): Connection? {
         val token = res.accessToken ?: this.token
@@ -242,7 +267,7 @@ class Plex(val clientId: String) {
         suspend fun first(list: List<Connection>): Connection? = coroutineScope {
             if (list.isEmpty()) return@coroutineScope null
             val result = CompletableDeferred<Connection?>()
-            val jobs = list.map { c -> launch { if (request("${c.uri}/identity", token = token, timeoutMs = 6000).ok) result.complete(c) } }
+            val jobs = list.map { c -> launch { if (identityOk(c.uri, token)) result.complete(c) } }
             launch { jobs.joinAll(); result.complete(null) }
             val r = withTimeoutOrNull(7000) { result.await() }
             coroutineContext.cancelChildren()
