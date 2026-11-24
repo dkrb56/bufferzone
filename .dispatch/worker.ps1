@@ -147,7 +147,9 @@ function Get-Workers {
 # permission prompt. Only the prompt waits (status waiting); the question is in the report, and
 # the session is done: a resume of it is no copy. Claude Code can also keep a session at working
 # after its turn ended (status idle). A run "<ticket> [plan]" or "<ticket> [work]" that is idle and
-# wrote its plan or report at or after its start is done. Busy and shell still run.
+# wrote its plan or report at or after its start is done. Without that file it is idle: the turn
+# ended with no result and waits for a follow-up, unless its job still has background work in flight
+# (ticket a-worker-that-waits-with-no-turn-does). Busy and shell still run.
 function Worker-State($Worker) {
   if ($null -eq $Worker) { return '' }
   $state = "$($Worker.state)"
@@ -159,8 +161,22 @@ function Worker-State($Worker) {
       $written = [DateTimeOffset]::new((Get-Item -LiteralPath $file).LastWriteTimeUtc).ToUnixTimeMilliseconds()
       if ($Worker.startedAt -and $written -ge [int64]$Worker.startedAt) { return 'done' }
     }
+    if (-not (Job-InFlight $Worker)) { return 'idle' }
   }
   $state
+}
+
+# True when ~\.claude\jobs\<id>\state.json of the worker says inFlight.tasks or inFlight.queued above 0:
+# background work can still go on by itself. A missing or bad file counts as nothing in flight.
+function Job-InFlight($Worker) {
+  $jobId = "$($Worker.id)"
+  if ($jobId -notmatch '^[A-Za-z0-9-]+$' -or -not $env:USERPROFILE) { return $false }
+  $file = Join-Path $env:USERPROFILE ".claude\jobs\$jobId\state.json"
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $false }
+  try { $job = Get-Content -LiteralPath $file -Raw | ConvertFrom-Json } catch { return $false }
+  $flight = $job.inFlight
+  if ($null -eq $flight) { return $false }
+  try { ([int64]"0$($flight.tasks)" -gt 0) -or ([int64]"0$($flight.queued)" -gt 0) } catch { $false }
 }
 
 # The session names of a ticket: the plan run is "<ticket> [plan]", the work run "<ticket> [work]",
@@ -171,9 +187,12 @@ function Run-Name([string]$Run) { "$Id [$Run]" }
 # when one exists, else the newest of any name (a worker of an older script has the bare id). The
 # plan run and the work run are two sessions (ticket work-fresh-session), and a follow-up of the work
 # run must resume the work session, never the plan session.
+# The list of claude agents has the sessions of every project, so only a worker of this project counts
+# (Own-Worker): a ticket id of another project with the same name is never stopped or resumed here
+# (ticket stop-on-a-task-stops-only-the-worker-of).
 function Find-Worker($Workers, [string]$Ticket, [string]$Run) {
   $names = @($Ticket, "$Ticket [plan]", "$Ticket [work]")
-  $mine = @($Workers | Where-Object { $names -contains $_.name } | Sort-Object { $_.startedAt })
+  $mine = @($Workers | Where-Object { $names -contains $_.name -and (Own-Worker $_) } | Sort-Object { $_.startedAt })
   if ($Run) {
     $named = @($mine | Where-Object { $_.name -eq "$Ticket [$Run]" })
     if ($named.Count -gt 0) { $mine = $named }
@@ -259,7 +278,7 @@ function Save-Session([string]$Run, [string[]]$Printed) {
   } catch { }
   $worker = @($workers | Where-Object { $_.id -and $words -contains "$($_.id)" }) | Select-Object -First 1
   if ($null -eq $worker) {
-    $named = @($workers | Where-Object { $_.name -eq (Run-Name $Run) } | Sort-Object { $_.startedAt })
+    $named = @($workers | Where-Object { $_.name -eq (Run-Name $Run) -and (Own-Worker $_) } | Sort-Object { $_.startedAt })
     if ($named.Count -gt 0) { $worker = $named[$named.Count - 1] }
   }
   if ($null -eq $worker -or -not $worker.sessionId) {
@@ -644,7 +663,8 @@ function Listed-Workers {
 }
 
 # The ticket that holds a work folder: the script of the record still runs, or the use is work and
-# the work run of that ticket still runs or waits at a prompt. Else $null: a stale record is
+# the work run of that ticket still runs, waits at a prompt or is idle with no turn (a follow-up
+# continues it in that folder). Else $null: a stale record is
 # overwritten by the next user. No file time and no reflog decides; the time of the record only
 # tells the script of the record from a later process with the same id (Owner-Runs).
 function Record-Holder([int]$N = $script:FolderNo) {
@@ -653,7 +673,7 @@ function Record-Holder([int]$N = $script:FolderNo) {
   if ($record.pid -ne "$PID" -and (Owner-Runs $record.pid $record.since)) { return $record.ticket }
   if ($record.use -eq 'work') {
     $state = Worker-State (Find-Worker (Listed-Workers) $record.ticket 'work')
-    if ($state -eq 'working' -or $state -eq 'blocked') { return $record.ticket }
+    if ($state -eq 'working' -or $state -eq 'blocked' -or $state -eq 'idle') { return $record.ticket }
   }
   $null
 }
@@ -667,6 +687,19 @@ function Folder-Number([string]$Path) {
   $work = [IO.Path]::GetFullPath((Join-Path $Reports 'work')).TrimEnd('\')
   if ($path -match ('^' + [regex]::Escape($work) + '\\([1-4])\\?$')) { return [int]$Matches[1] }
   0
+}
+
+# True when the worker $Worker is a worker of this project (ticket stop-on-a-task-stops-only-the-worker-of):
+# its cwd is the project folder or a work folder of it, compared as in Folder-Number. The list of claude
+# agents has the sessions of every project. A worker without cwd (an older Claude Code) counts as own.
+function Own-Worker($Worker) {
+  $cwd = "$($Worker.cwd)"
+  if (-not $cwd) { return $true }
+  if ((Folder-Number $cwd) -gt 0) { return $true }
+  $path = $cwd -replace '/', '\'
+  if ($path.StartsWith('\\?\')) { $path = $path.Substring(4) }
+  try { $path = [IO.Path]::GetFullPath($path).TrimEnd('\') } catch { return $false }
+  $path -eq [IO.Path]::GetFullPath($Project).TrimEnd('\')
 }
 
 # The work folder where the session of the work run of the task runs: the number in the cwd of its
