@@ -16,3 +16,4 @@
 {"op":"status","ref":"android-tv-install-updates-from-inside","ts":"2026-11-20T20:57:05.987Z","status":"in_progress","order":null}
 {"op":"close","ref":"android-tv-install-updates-from-inside","ts":"2026-11-20T21:18:36.567Z","resolution":"done","note":"done","order":null}
 {"op":"open","id":"on-android-tv-app-keeps-playing-even-if","ts":"2026-11-24T16:36:27.884Z","title":"On android tv app keeps playing even if its minimized","type":"feature","summary":"on android tv app keeps playing even if its minimized. i can hear sound of the show even when running different app.","tags":[],"status":"triage","order":null,"level":"medium"}
+{"op":"status","ref":"on-android-tv-app-keeps-playing-even-if","ts":"2026-11-24T16:36:45.710Z","status":"in_progress","order":null}
